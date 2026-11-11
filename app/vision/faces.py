@@ -56,14 +56,17 @@ class FaceEngine:
         n = float(np.linalg.norm(v))
         return v / n if n > 0 else v
 
-    def match(self, emb: np.ndarray, gallery: list[tuple[int, np.ndarray]]) -> tuple[int | None, float]:
+    def match_face(self, target_embedding, stored_embeddings):
         """Best cosine match per person; returns (person_id, score) or (None, best_score) below threshold."""
-        best_pid, best = None, -1.0
-        for pid, ref in gallery:
-            n = float(np.linalg.norm(ref))
-            score = float(np.dot(emb, ref / n)) if n else -1.0
-            if score > best:
-                best_pid, best = pid, score
-        if best_pid is not None and best >= self.s.face_match_threshold:
-            return best_pid, best
-        return None, best
+        best_score = -1.0
+        best_name = None
+        
+        for name, sample_embedding in stored_embeddings.items():
+            # Compute Cosine Similarity between embeddings
+            score = self.recognizer.match(target_embedding, sample_embedding, cv2.FaceRecognizerSF_FR_COSINE)
+            if score > best_score:
+                best_score = score
+                if score >= 0.363:
+                    best_name = name
+                    return best_name, best_score
+        return best_name, best_score
