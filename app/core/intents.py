@@ -34,18 +34,25 @@ def _tokens(text: str) -> list[str]:
     return _PUNCT.sub(" ", text.lower()).split()
 
 
+def _norm(tok: str) -> str:
+    """Collapse spelling differences recognisers produce for the same sound (Shanku/Sonku/Sanko)."""
+    tok = tok.replace("sh", "s").replace("kh", "k").replace("oo", "u").replace("ou", "u")
+    return tok.replace("o", "a")
+
+
 def find_wake_word(text: str, wake_words: list[str]) -> tuple[bool, str]:
     """Return (heard, remainder). Fuzzy because speech recognisers mangle an unusual name like 'Sonku'."""
     raw = text.strip()
     toks = _tokens(raw)
     targets = {CANON, *[w.replace(" ", "") for w in wake_words]}
+    norm_targets = {_norm(x) for x in targets}
     hit = None
     for i, tok in enumerate(toks[:6]):
         cands = [(tok, 1)]
         if i + 1 < len(toks):
             cands.append((tok + toks[i + 1], 2))  # "son ku" -> "sonku"
         for cand, width in cands:
-            if cand in ALIASES or any(SequenceMatcher(None, cand, t).ratio() >= 0.78 for t in targets):
+            if cand in ALIASES or any(SequenceMatcher(None, _norm(cand), t).ratio() >= 0.8 for t in norm_targets):
                 hit = (i, width)
                 break
         if hit:
