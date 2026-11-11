@@ -3,7 +3,7 @@
 set -e
 
 source /home/dhirajpatra/robot_env/bin/activate
-sudo systemctl restart sonku.service
+sudo systemctl restart tabletop-rbot.service
 sleep 2
-if systemctl is-active --quiet sonku.service; then echo "Sonku is running."; else echo "Sonku failed to start:"; journalctl -u sonku.service -n 30 --no-pager; exit 1; fi
-journalctl -u sonku.service -f -n 40
+if systemctl is-active --quiet tabletop-rbot.service; then echo "Tabletop-Rbot is running."; else echo "Tabletop-Rbot failed to start:"; journalctl -u tabletop-rbot.service -n 30 --no-pager; exit 1; fi
+journalctl -u tabletop-rbot.service -f -n 40
