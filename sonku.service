@@ -6,9 +6,9 @@ Wants=ollama.service
 [Service]
 Type=simple
 User=dhirajpatra
-WorkingDirectory=/home/dhirajpatra/
-EnvironmentFile=/home/dhirajpatra/.env
-ExecStart=/home/dhirajpatra/robot_env/bin/python3 /home/dhirajpatra/robot_main.py
+WorkingDirectory=/home/dhirajpatra/sonku
+EnvironmentFile=/home/dhirajpatra/sonku/.env
+ExecStart=/home/dhirajpatra/robot_env/bin/python3 /home/dhirajpatra/sonku/robot_main.py
 Restart=always
 RestartSec=5
 
