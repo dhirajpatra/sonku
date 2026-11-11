@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-
 import requests
 
 from app.config import Settings
@@ -30,30 +29,63 @@ class MetaClient:
     def complete(self, system: str, history, user_text: str, image_b64: str | None = None) -> str:
         if not self.s.meta_api_key or self.s.meta_api_key.startswith("your_"):
             raise MetaError("MODEL_API_KEY is not set")
-        content = [{"type": "input_text", "text": self.flat_prompt(system, history, user_text)}]
+        
+        prompt_text = self.flat_prompt(system, history, user_text)
+        
+        # Build prompt object content array
+        content = [{"type": "input_text", "text": prompt_text}]
         if image_b64:
-            content.append({"type": "input_image", "image_url": f"data:image/jpeg;base64,{image_b64}"})
+            content.append({
+                "type": "input_image",
+                "image_url": f"data:image/jpeg;base64,{image_b64}"
+            })
+
+        # Wrap payload under the `prompt` object as required by /v1/responses
         payload = {
             "model": self.s.meta_model,
-            "input": [{"role": "user", "content": content}],
+            "prompt": {
+                "input": [{"role": "user", "content": content}]
+            },
             "reasoning": {"effort": "low"},
             "max_output_tokens": self.s.max_output_tokens,
             "stream": False,
         }
-        headers = {"Authorization": f"Bearer {self.s.meta_api_key}", "Content-Type": "application/json"}
+        
+        headers = {
+            "Authorization": f"Bearer {self.s.meta_api_key}",
+            "Content-Type": "application/json"
+        }
+        
         try:
-            r = self.http.post(self.s.meta_api_url, headers=headers, json=payload,
-                               timeout=(self.s.meta_connect_timeout, self.s.meta_read_timeout))
+            r = self.http.post(
+                self.s.meta_api_url,
+                headers=headers,
+                json=payload,
+                timeout=(self.s.meta_connect_timeout, self.s.meta_read_timeout)
+            )
         except requests.RequestException as exc:
             raise MetaError(f"{type(exc).__name__}: {exc}") from exc
+            
         if r.status_code != 200:
             raise MetaError(f"HTTP {r.status_code}: {r.text[:200]}")
+            
         data = r.json()
+        
+        # 1. Parse nested response structure
         for item in data.get("output", []):
             if item.get("type") == "message":
                 for part in item.get("content", []):
                     if part.get("type") == "output_text" and part.get("text"):
-                        return part["text"]
+                        return part["text"].strip()
+                        
+        # 2. Fallback to direct output_text keys if returned flat
         if data.get("output_text"):
-            return data["output_text"]
-        raise MetaError("no text in response")
+            return data["output_text"].strip()
+            
+        # 3. Fallback to responses array structure
+        if "responses" in data and len(data["responses"]) > 0:
+            res = data["responses"][0]
+            if isinstance(res, dict) and res.get("output_text"):
+                return res["output_text"].strip()
+
+        raise MetaError(f"no text in response (keys returned: {list(data.keys())})")
