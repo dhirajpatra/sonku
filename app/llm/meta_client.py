@@ -1,4 +1,4 @@
-"""Meta API client (Responses-style endpoint), non-streaming, same payload shape as the original robot."""
+"""Meta API client matching Meta /v1/responses endpoint schema."""
 from __future__ import annotations
 
 import logging
@@ -16,7 +16,7 @@ class MetaError(RuntimeError):
 class MetaClient:
     def __init__(self, s: Settings):
         self.s = s
-        self.http = requests.Session()  # keep-alive saves a TLS handshake per turn
+        self.http = requests.Session()
 
     @staticmethod
     def flat_prompt(system: str, history: list[tuple[str, str]], user_text: str) -> str:
@@ -29,10 +29,9 @@ class MetaClient:
     def complete(self, system: str, history, user_text: str, image_b64: str | None = None) -> str:
         if not self.s.meta_api_key or self.s.meta_api_key.startswith("your_"):
             raise MetaError("MODEL_API_KEY is not set")
-        
+
         prompt_text = self.flat_prompt(system, history, user_text)
         
-        # Build prompt object content array
         content = [{"type": "input_text", "text": prompt_text}]
         if image_b64:
             content.append({
@@ -40,7 +39,6 @@ class MetaClient:
                 "image_url": f"data:image/jpeg;base64,{image_b64}"
             })
 
-        # Wrap payload under the `prompt` object as required by /v1/responses
         payload = {
             "model": self.s.meta_model,
             "prompt": {
@@ -50,12 +48,12 @@ class MetaClient:
             "max_output_tokens": self.s.max_output_tokens,
             "stream": False,
         }
-        
+
         headers = {
             "Authorization": f"Bearer {self.s.meta_api_key}",
             "Content-Type": "application/json"
         }
-        
+
         try:
             r = self.http.post(
                 self.s.meta_api_url,
@@ -65,27 +63,25 @@ class MetaClient:
             )
         except requests.RequestException as exc:
             raise MetaError(f"{type(exc).__name__}: {exc}") from exc
-            
+
         if r.status_code != 200:
             raise MetaError(f"HTTP {r.status_code}: {r.text[:200]}")
-            
+
         data = r.json()
-        
-        # 1. Parse nested response structure
+
+        # Parse nested output_text from Meta /v1/responses payload
         for item in data.get("output", []):
             if item.get("type") == "message":
                 for part in item.get("content", []):
                     if part.get("type") == "output_text" and part.get("text"):
                         return part["text"].strip()
-                        
-        # 2. Fallback to direct output_text keys if returned flat
+
         if data.get("output_text"):
             return data["output_text"].strip()
-            
-        # 3. Fallback to responses array structure
+
         if "responses" in data and len(data["responses"]) > 0:
             res = data["responses"][0]
             if isinstance(res, dict) and res.get("output_text"):
                 return res["output_text"].strip()
 
-        raise MetaError(f"no text in response (keys returned: {list(data.keys())})")
+        raise MetaError("no text in response")
