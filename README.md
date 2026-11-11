@@ -1,4 +1,4 @@
-# Ritchie Mini / Sonku Tabletop Conversational AI
+# Sonku Tabletop Conversational AI
 
 Multimodal stationary conversational AI application built for Raspberry Pi 5 (16GB).
 
