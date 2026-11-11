@@ -1,0 +1,23 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+opencv-python
+speechrecognition
+pyaudio
+python-dotenv
+requests
+fasttext-langdetect
+python-prctl
+piexif
+simplejpeg
+huggingface_hub
+safetensors
+spacy
+scipy
+soundfile
+transformers
+sentencepiece
+misaki
+num2words
+phonemizer
+torch
+torchaudio
+gTTS
