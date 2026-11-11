@@ -24,4 +24,16 @@ if [ ! -d "/home/dhirajpatra/mithi-v1-flash" ]; then
     huggingface-cli download Oomni/mithi-v1-flash --local-dir /home/dhirajpatra/mithi-v1-flash
 fi
 
+echo "[3/4] Pulling Ollama Models..."
+if ! command -v ollama &> /dev/null; then
+    echo "Ollama CLI not found. Please install Ollama CLI first."
+    exit 1
+fi
+ollama pull qwen3.5:2b-q4_K_M
+
+# 4. Set ALSA/PortAudio environment flags and run in foreground
+export JACK_NO_START_SERVER=1
+export PA_ALSA_PLUGHOST=1
+export PA_ALSA_INITIAL_BUFFER_SIZE=4096
+
 echo "[4/4] Setup Completed Successfully!"
