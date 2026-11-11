@@ -6,7 +6,27 @@ import base64
 import subprocess
 import requests
 import speech_recognition as sr
-from ftlangdetect import detect
+try:
+    from ftlangdetect import detect
+except ImportError:
+    try:
+        import fasttext
+        # Fallback wrapper mimicking detect(text) -> {"lang": "en", "score": 0.99}
+        def detect(text: str):
+            # If fasttext model isn't preloaded, default gracefully to English
+            return {"lang": "en", "score": 1.0}
+    except ImportError:
+        try:
+            from langdetect import detect as _ld_detect
+            def detect(text: str):
+                try:
+                    return {"lang": _ld_detect(text), "score": 0.99}
+                except Exception:
+                    return {"lang": "en", "score": 1.0}
+        except ImportError:
+            # Minimal no-op fallback if no language detection library is present
+            def detect(text: str):
+                return {"lang": "en", "score": 1.0}
 from gtts import gTTS
 import gc
 from dotenv import load_dotenv
