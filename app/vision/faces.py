@@ -56,24 +56,39 @@ class FaceEngine:
         n = float(np.linalg.norm(v))
         return v / n if n > 0 else v
 
-    def match(self, target_embedding: np.ndarray, gallery: dict[int, list[np.ndarray]]) -> tuple[int | None, float]:
-        """Matches a target embedding against gallery items.
+    def match(self, target_embedding: np.ndarray, gallery: dict[int, list[np.ndarray]] | list) -> tuple[int | None, float]:
+        """Matches target embedding against gallery items.
         
-        `presence.py` calls match(emb, gallery) expecting (person_id, score).
+        Handles gallery passed either as:
+        - dict: {person_id: [emb1, emb2, ...]}
+        - list: [(person_id, emb), ...] or list of embeddings
         """
         best_score = -1.0
         best_pid = None
-        
         threshold = getattr(self.s, "face_sim_threshold", 0.363)
-        
+
         with self._lock:
-            for pid, embeddings in gallery.items():
-                for sample in embeddings:
-                    # Compute Cosine Similarity via OpenCV SFace or vector dot product
+            # Handle gallery passed as a list
+            if isinstance(gallery, list):
+                for item in gallery:
+                    if isinstance(item, (tuple, list)) and len(item) == 2:
+                        pid, sample = item
+                    else:
+                        pid, sample = None, item
+                    
                     score = float(self.rec.match(target_embedding, sample, cv2.FaceRecognizerSF_FR_COSINE))
                     if score > best_score:
                         best_score = score
                         if score >= threshold:
                             best_pid = pid
+            # Handle gallery passed as a dict
+            elif isinstance(gallery, dict):
+                for pid, embeddings in gallery.items():
+                    for sample in embeddings:
+                        score = float(self.rec.match(target_embedding, sample, cv2.FaceRecognizerSF_FR_COSINE))
+                        if score > best_score:
+                            best_score = score
+                            if score >= threshold:
+                                best_pid = pid
 
         return (best_pid, best_score)
