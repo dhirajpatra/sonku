@@ -1,9 +1,17 @@
-#!/usr/bin/env bash
-# Start (or restart) Sonku and follow its log. Ctrl+C leaves the service running.
-set -e
+source ~/robot_env/bin/activate
 
-source /home/dhirajpatra/robot_env/bin/activate
-sudo systemctl restart tabletop-robot.service
-sleep 2
-if systemctl is-active --quiet tabletop-robot.service; then echo "Tabletop-Robot is running."; else echo "Tabletop-Robot failed to start:"; journalctl -u tabletop-robot.service -n 30 --no-pager; exit 1; fi
-journalctl -u tabletop-robot.service -f -n 40
+# 1. Check you really have the new code (all three should exist)
+ls app/main.py systemd/sonku.service scripts/install_service.sh
+grep -c sonku.service start.sh     # should print 1 or more; 0 means start.sh is still the old one
+
+# 2. Stop the old service so it doesn't hold the mic and camera
+sudo systemctl disable --now tabletop-robot.service
+
+# 3. Config and dependencies
+[ -f .env ] || cp .env.example .env
+nano .env                          # set ADMIN_PASSWORD and MODEL_API_KEY
+~/robot_env/bin/pip install -r requirements.txt
+~/robot_env/bin/python scripts/download_models.py
+
+# 4. Run it in the foreground first, to see any errors directly
+~/robot_env/bin/python -m app      # Ctrl+C to stop

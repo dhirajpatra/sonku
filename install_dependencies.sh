@@ -13,7 +13,7 @@ sudo apt install -y python3-venv python3-full
 python3 -m venv --system-site-packages /home/dhirajpatra/robot_env
 
 # 3. Activate the virtual environment
-source /home/dhirajpatra/robot_env/bin/activate
+source ~/robot_env/bin/activate
 
 echo "[2/4] Installing Python Requirements..."
 pip install -r requirements.txt
