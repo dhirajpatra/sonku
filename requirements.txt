@@ -1,23 +1,13 @@
---extra-index-url https://download.pytorch.org/whl/cpu
-opencv-python
-speechrecognition
-pyaudio
-python-dotenv
-requests
-fasttext-langdetect
-python-prctl
-piexif
-simplejpeg
-huggingface_hub
-safetensors
-spacy
-scipy
-soundfile
-transformers
-sentencepiece
-misaki
-num2words
-phonemizer
-torch
-torchaudio
-gTTS
+# Core runtime (Raspberry Pi OS Bookworm, Python 3.11, 64-bit)
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-dotenv>=1.0
+requests>=2.31
+# numpy<2 keeps compatibility with apt-installed picamera2 / libcamera bindings
+numpy>=1.24,<2
+scipy>=1.11
+# FaceDetectorYN / FaceRecognizerSF need OpenCV >= 4.8
+opencv-python-headless>=4.8,<4.11
+sounddevice>=0.4.6
+SpeechRecognition>=3.10
+gTTS>=2.5

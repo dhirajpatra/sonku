@@ -1,0 +1,9 @@
+# OPTIONAL: local Indic speech-to-text (bodhan-ai/indic-transcribe-core, 1.2B params, gated model).
+# Heavy for a Pi 5 CPU: benchmark with `python scripts/diagnose.py stt-bench` before enabling.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchaudio
+transformers
+sentencepiece
+soundfile
+huggingface_hub

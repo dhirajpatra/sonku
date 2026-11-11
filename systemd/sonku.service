@@ -1,0 +1,21 @@
+[Unit]
+Description=Sonku tabletop robot
+After=network-online.target sound.target ollama.service
+Wants=network-online.target ollama.service
+
+[Service]
+Type=simple
+User=@USER@
+SupplementaryGroups=audio video
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=@APP_DIR@/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=JACK_NO_START_SERVER=1
+ExecStart=@VENV@/bin/python -m app
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+MemoryMax=12G
+
+[Install]
+WantedBy=multi-user.target

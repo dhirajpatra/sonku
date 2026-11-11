@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sonku admin</title>
+<style>
+  :root {
+    --paper: #eef2f4; --card: #ffffff; --ink: #1b2a33; --muted: #5d6f7a; --line: #d3dde3;
+    --accent: #0f6e8c; --accent-ink: #ffffff; --ok: #2f7d4f; --warn: #b36a00; --bad: #b23a48;
+    --radius: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #12191e; --card: #1b252c; --ink: #e4edf1; --muted: #93a6b1; --line: #2e3d46;
+            --accent: #4fb3d1; --accent-ink: #0b1a20; --ok: #6cc28c; --warn: #e0a24a; --bad: #e57a88; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font: 15px/1.5 "Avenir Next", "Segoe UI", system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--card); flex-wrap: wrap; }
+  header h1 { font-size: 20px; margin: 0; letter-spacing: .01em; }
+  #pill { padding: 2px 10px; border-radius: 99px; border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  nav { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+  nav button { background: none; border: 0; padding: 8px 12px; font: inherit; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; }
+  nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  main { max-width: 1040px; margin: 0 auto; padding: 20px; }
+  section { display: none; } section.on { display: block; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 16px; margin: 0 0 12px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .banner { padding: 10px 14px; border-radius: var(--radius); margin-bottom: 16px; border: 1px solid var(--warn); color: var(--warn); background: var(--card); font-weight: 600; }
+  .banner.bad { border-color: var(--bad); color: var(--bad); }
+  dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; }
+  dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  .gauge { height: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 99px; overflow: hidden; margin: 8px 0; }
+  .gauge > i { display: block; height: 100%; background: var(--accent); min-width: 2px; }
+  .gauge > i.warn { background: var(--warn); } .gauge > i.bad { background: var(--bad); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  .scroll { overflow-x: auto; }
+  button.btn, input, select { font: inherit; }
+  button.btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: var(--radius); padding: 8px 14px; cursor: pointer; }
+  button.btn.quiet { background: none; color: var(--accent); border: 1px solid var(--line); }
+  button.btn.danger { background: var(--bad); color: #fff; }
+  button.btn:focus-visible, input:focus-visible, select:focus-visible, nav button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  input[type=text], input[type=number], select { padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); color: var(--ink); min-width: 0; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  #live { width: 100%; max-width: 640px; border-radius: var(--radius); border: 1px solid var(--line); background: #000; aspect-ratio: 4/3; object-fit: cover; }
+  .log { font: 12.5px/1.45 ui-monospace, "Cascadia Mono", Menlo, monospace; white-space: pre-wrap; max-height: 520px; overflow: auto; }
+  .log .ERROR, .log .CRITICAL { color: var(--bad); } .log .WARNING { color: var(--warn); }
+  .field { display: grid; grid-template-columns: minmax(180px, 1fr) 2fr; gap: 8px 16px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: var(--radius); display: none; max-width: 90vw; }
+  .muted { color: var(--muted); }
+  @media (prefers-reduced-motion: no-preference) { .gauge > i { transition: width .4s; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sonku</h1><span id="pill">connecting…</span>
+  <nav role="tablist" id="tabs"></nav>
+</header>
+<main>
+  <div id="alert"></div>
+
+  <section id="dashboard" class="on">
+    <div class="grid">
+      <div class="card"><h2>Right now</h2><dl id="now"></dl></div>
+      <div class="card"><h2>Memory</h2>
+        <div id="gauge-text"></div><div class="gauge"><i id="gauge"></i></div><dl id="mem"></dl>
+        <div class="row" style="margin-top:12px"><button class="btn quiet" id="btn-maint">Run maintenance now</button></div>
+      </div>
+      <div class="card"><h2>Hardware and services</h2><dl id="health"></dl></div>
+      <div class="card"><h2>Language model</h2><dl id="llm"></dl></div>
+    </div>
+    <div class="card"><h2>Last turn timing</h2><dl id="timing"></dl></div>
+    <div class="card"><h2>Controls</h2>
+      <div class="row">
+        <button class="btn quiet" id="btn-pause">Pause listening</button>
+        <button class="btn quiet" id="btn-end">End conversation</button>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <input type="text" id="chat-text" placeholder="Type a message to test the language model" style="flex:1;min-width:220px">
+        <label><input type="checkbox" id="chat-speak"> speak it</label>
+        <button class="btn" id="btn-chat">Send</button>
+      </div>
+      <p id="chat-out" class="muted"></p>
+    </div>
+  </section>
+
+  <section id="people">
+    <div class="card"><h2>Add someone from the camera</h2>
+      <div class="row"><input type="text" id="enroll-name" placeholder="Name"><button class="btn" id="btn-enroll">Capture face and save</button></div>
+      <p class="muted">The person stands in front of Sonku. Only a numeric face template is saved, never a photo.</p>
+    </div>
+    <div class="card"><h2>People Sonku remembers</h2><div class="scroll"><table id="people-table"></table></div>
+      <div class="row" style="margin-top:12px"><button class="btn danger" id="btn-wipe">Delete everyone</button></div>
+    </div>
+  </section>
+
+  <section id="chats">
+    <div class="card"><h2>Recent conversations</h2><div class="scroll"><table id="chat-table"></table></div>
+      <div class="row" style="margin-top:12px"><button class="btn danger" id="btn-clear-chats">Delete all conversations</button></div>
+    </div>
+  </section>
+
+  <section id="camera">
+    <div class="card"><h2>What Sonku sees</h2><img id="live" alt="Live camera view"><p class="muted" id="live-note"></p></div>
+  </section>
+
+  <section id="settings">
+    <div class="card"><h2>Settings</h2><div id="settings-form"></div>
+      <div class="row" style="margin-top:14px"><button class="btn" id="btn-save">Save settings</button></div>
+      <p class="muted">Saved changes apply immediately. Hardware, model paths and API keys are set in the .env file.</p>
+    </div>
+  </section>
+
+  <section id="logs">
+    <div class="card"><div class="row" style="margin-bottom:10px">
+      <select id="log-level"><option>INFO</option><option>WARNING</option><option>ERROR</option><option>DEBUG</option></select>
+      <button class="btn quiet" id="btn-logs">Refresh</button></div>
+      <div class="log" id="log-out"></div></div>
+  </section>
+</main>
+<div id="toast" role="status"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const H = { "X-Sonku": "1", "Content-Type": "application/json" };
+// Every dynamic value goes through textContent, so text spoken near the robot can never inject HTML.
+function el(tag, props, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) { if (k === "class") n.className = v; else if (k === "onclick") n.onclick = v; else n.setAttribute(k, v); }
+  for (const k of kids.flat()) n.append(k instanceof Node ? k : document.createTextNode(k ?? ""));
+  return n;
+}
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 3500); }
+async function api(path, method = "GET", body) {
+  const r = await fetch("/api" + path, { method, headers: H, body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) { let d = r.statusText; try { d = (await r.json()).detail || d; } catch (e) {} throw new Error(d); }
+  return r.headers.get("content-type")?.includes("json") ? r.json() : null;
+}
+const fmtBytes = (b) => b > 1e9 ? (b / 1e9).toFixed(2) + " GB" : b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : (b / 1e3).toFixed(0) + " KB";
+const fmtTime = (t) => t ? new Date(t * 1000).toLocaleString() : "never";
+const fmtDur = (s) => s > 3600 ? Math.floor(s / 3600) + " h " + Math.floor(s % 3600 / 60) + " min" : s > 60 ? Math.floor(s / 60) + " min" : s + " s";
+function fill(id, rows) { const d = $(id); d.replaceChildren(); for (const [k, v, cls] of rows) { d.append(el("dt", {}, k), el("dd", { class: cls || "" }, v)); } }
+
+const TABS = [["dashboard", "Dashboard"], ["people", "People"], ["chats", "Conversations"], ["camera", "Camera"], ["settings", "Settings"], ["logs", "Logs"]];
+let current = "dashboard";
+function show(name) {
+  current = name;
+  for (const [id] of TABS) { $(id).classList.toggle("on", id === name); }
+  for (const b of $("tabs").children) b.setAttribute("aria-selected", b.dataset.id === name);
+  if (name === "people") loadPeople(); if (name === "chats") loadChats(); if (name === "settings") loadSettings(); if (name === "logs") loadLogs();
+  history.replaceState(null, "", "#" + name);
+}
+for (const [id, label] of TABS) { const b = el("button", { role: "tab", "data-id": id, onclick: () => show(id) }, label); $("tabs").append(b); }
+
+async function refresh() {
+  try {
+    const s = await api("/status");
+    $("pill").textContent = s.robot.paused ? "paused" : s.robot.state;
+    const alerts = [];
+    if (s.memory_alert) alerts.push(el("div", { class: "banner " + (s.memory.status === "full" ? "bad" : "") }, s.memory_alert));
+    for (const [k, v] of Object.entries(s.health)) if (v.startsWith("unavailable")) alerts.push(el("div", { class: "banner bad" }, k + " " + v));
+    $("alert").replaceChildren(...alerts);
+    const r = s.robot, p = s.presence;
+    fill("now", [
+      ["Conversation", r.session ? `${r.session.name || "someone new"} (${r.session.lang}, ${r.session.turns} turns, idle ${r.session.idle_sec}s)` : "none open"],
+      ["Camera sees", p ? (p.face_present ? (p.name ? p.name + " (" + p.score + ")" : p.status) : "nobody") : "vision off"],
+      ["Uptime", fmtDur(s.uptime_sec)], ["Version", s.version],
+      ["Errors logged", String(s.log_errors), s.log_errors ? "warn" : "ok"],
+    ]);
+    const m = s.memory;
+    $("gauge-text").textContent = `${fmtBytes(m.data_bytes)} of ${fmtBytes(m.limit_bytes)} used (${m.percent}%)`;
+    const g = $("gauge"); g.style.width = Math.max(0.5, Math.min(100, m.percent)) + "%"; g.className = m.status === "full" ? "bad" : m.status === "warning" ? "warn" : "";
+    fill("mem", [["People", m.people], ["Face templates", m.faces], ["Conversation turns", m.interactions], ["Database file", fmtBytes(m.db_bytes)]]);
+    fill("health", Object.entries(s.health).map(([k, v]) => [k, v, v === "ok" || v === "headless" ? "ok" : "bad"]));
+    const l = s.llm;
+    fill("llm", [["Mode", l.configured_backend], ["Last answered by", l.last_backend],
+      ["Meta key", l.meta_key_set ? "set" : "missing", l.meta_key_set ? "ok" : "warn"],
+      ["Meta skipped for", l.meta_skipped_for_sec ? l.meta_skipped_for_sec + " s after failures" : "no", l.meta_skipped_for_sec ? "warn" : ""],
+      ["Ollama (" + l.ollama_model + ")", l.ollama_up ? "running" : "not reachable", l.ollama_up ? "ok" : "bad"], ["Last error", l.last_error || "none"]]);
+    const t = r.last_turn || {}, ms = (v) => v == null ? "–" : v + " ms";
+    fill("timing", [["Speech to text", ms(t.stt_ms)], ["First sentence from LLM", ms(t.llm_first_sentence_ms)], ["First audio out", ms(t.first_audio_ms)], ["Whole turn", ms(t.total_ms)], ["Camera used", t.vision ? "yes" : "no"]]);
+    $("btn-pause").textContent = r.paused ? "Resume listening" : "Pause listening";
+    $("btn-pause").dataset.paused = r.paused;
+  } catch (e) { $("pill").textContent = "offline"; }
+}
+
+async function loadPeople() {
+  const rows = await api("/people"), t = $("people-table");
+  t.replaceChildren(el("tr", {}, ...["Name", "Language", "Faces", "Face updated", "Last seen", "Turns", ""].map((h) => el("th", {}, h))));
+  if (!rows.length) t.append(el("tr", {}, el("td", { colspan: 7, class: "muted" }, "Nobody yet. Add someone above, or let Sonku ask a new visitor.")));
+  for (const p of rows) {
+    t.append(el("tr", {}, el("td", {}, p.name), el("td", {}, p.language), el("td", {}, p.face_count), el("td", {}, fmtTime(p.face_updated)), el("td", {}, fmtTime(p.last_seen)), el("td", {}, p.interaction_count),
+      el("td", { class: "row" },
+        el("button", { class: "btn quiet", onclick: async () => { const n = prompt("New name", p.name); if (n) { await act(() => api("/people/" + p.id, "PATCH", { name: n }), "Renamed"); loadPeople(); } } }, "Rename"),
+        el("button", { class: "btn danger", onclick: async () => { if (confirm("Delete " + p.name + ", their face and all their conversations?")) { await act(() => api("/people/" + p.id, "DELETE"), "Deleted"); loadPeople(); } } }, "Delete"))));
+  }
+}
+async function loadChats() {
+  const rows = await api("/interactions?limit=100"), t = $("chat-table");
+  t.replaceChildren(el("tr", {}, ...["When", "Who", "Said", "Sonku replied", "Via"].map((h) => el("th", {}, h))));
+  if (!rows.length) t.append(el("tr", {}, el("td", { colspan: 5, class: "muted" }, "No conversations stored.")));
+  for (const c of rows) t.append(el("tr", {}, el("td", {}, fmtTime(c.ts)), el("td", {}, c.person_name || "unknown"), el("td", {}, c.user_text), el("td", {}, c.robot_text), el("td", {}, (c.backend || "") + (c.visual ? " + camera" : "") + " " + (c.latency_ms || 0) + " ms")));
+}
+async function loadSettings() {
+  const rows = await api("/settings"), f = $("settings-form");
+  f.replaceChildren();
+  for (const r of rows) {
+    let input;
+    if (r.choices) { input = el("select", { "data-key": r.key }, r.choices.map((c) => el("option", c === r.value ? { selected: "" } : {}, c))); }
+    else if (r.type === "bool") { input = el("select", { "data-key": r.key }, [el("option", r.value ? { selected: "", value: "true" } : { value: "true" }, "on"), el("option", !r.value ? { selected: "", value: "false" } : { value: "false" }, "off")]); }
+    else { input = el("input", { type: r.type === "str" ? "text" : "number", step: "any", "data-key": r.key, value: r.value }); }
+    f.append(el("label", { class: "field" }, r.label, input));
+  }
+}
+async function loadLogs() {
+  const rows = await api("/logs?n=300&level=" + $("log-level").value), box = $("log-out");
+  box.replaceChildren(...rows.map((r) => el("div", { class: r.level }, new Date(r.ts * 1000).toLocaleTimeString() + " " + r.level + " " + r.msg)));
+  box.scrollTop = box.scrollHeight;
+}
+async function act(fn, ok) { try { await fn(); if (ok) toast(ok); } catch (e) { toast(e.message); } }
+
+$("btn-maint").onclick = () => act(async () => { const r = await api("/memory/maintenance", "POST"); toast("Done: " + JSON.stringify(r)); refresh(); });
+$("btn-pause").onclick = () => act(async () => { await api("/control/" + ($("btn-pause").dataset.paused === "true" ? "resume" : "pause"), "POST"); refresh(); });
+$("btn-end").onclick = () => act(async () => { await api("/control/end-session", "POST"); refresh(); }, "Conversation ended");
+$("btn-chat").onclick = () => act(async () => { $("chat-out").textContent = "…"; const r = await api("/chat", "POST", { text: $("chat-text").value, speak: $("chat-speak").checked }); $("chat-out").textContent = r.reply; refresh(); });
+$("btn-enroll").onclick = () => act(async () => { const n = $("enroll-name").value.trim(); if (!n) throw new Error("Enter a name first"); toast("Look at the camera…"); await api("/people/enroll", "POST", { name: n }); $("enroll-name").value = ""; loadPeople(); toast("Saved " + n); });
+$("btn-wipe").onclick = () => act(async () => { if (confirm("Delete EVERY person, face and conversation? This cannot be undone.")) { await api("/people?confirm=yes", "DELETE"); loadPeople(); toast("Everything deleted"); } });
+$("btn-clear-chats").onclick = () => act(async () => { if (confirm("Delete all stored conversations?")) { await api("/interactions", "DELETE"); loadChats(); toast("Conversations deleted"); } });
+$("btn-save").onclick = () => act(async () => { const v = {}; for (const i of document.querySelectorAll("#settings-form [data-key]")) v[i.dataset.key] = i.value; await api("/settings", "PUT", v); toast("Settings saved"); });
+$("btn-logs").onclick = loadLogs; $("log-level").onchange = loadLogs;
+
+setInterval(() => { if (document.hidden) return; refresh(); if (current === "camera") $("live").src = "/api/camera/snapshot?t=" + Date.now(); if (current === "logs") loadLogs(); }, 2000);
+$("live").onerror = () => { $("live-note").textContent = "Camera not available."; }; $("live").onload = () => { $("live-note").textContent = ""; };
+show(location.hash.slice(1) && TABS.some(([id]) => id === location.hash.slice(1)) ? location.hash.slice(1) : "dashboard");
+refresh();
+</script>
+</body>
+</html>
