@@ -13,4 +13,3 @@ SpeechRecognition>=3.10
 gTTS>=2.5
 fasttext-wheel
 langdetect
-ftlangdetect
