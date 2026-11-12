@@ -11,6 +11,7 @@ from collections import deque
 
 import numpy as np
 
+from app.audio.devices import AudioRouter
 from app.config import Settings
 
 log = logging.getLogger("sonku.mic")
@@ -18,8 +19,9 @@ TARGET_RATE = 16000
 
 
 class Recorder:
-    def __init__(self, s: Settings):
+    def __init__(self, s: Settings, audio: AudioRouter | None = None):
         self.s = s
+        self.audio = audio or AudioRouter(s)
         self.device: int | None = None
         self.rate = TARGET_RATE
         self.noise = 0.0
@@ -30,14 +32,7 @@ class Recorder:
     def open(self) -> None:
         import sounddevice as sd
 
-        match = self.s.audio_input_match.lower()
-        devices = sd.query_devices()
-        for idx, d in enumerate(devices):
-            if d["max_input_channels"] > 0 and match and match in d["name"].lower():
-                self.device = idx
-                break
-        else:
-            log.warning("no input device matching '%s'; using system default", self.s.audio_input_match)
+        self.device = self._pick_device(sd)
         for rate in (TARGET_RATE, int(sd.query_devices(self.device, "input")["default_samplerate"])):
             try:
                 sd.check_input_settings(device=self.device, samplerate=rate, channels=1, dtype="int16")
@@ -47,6 +42,24 @@ class Recorder:
                 continue
         name = sd.query_devices(self.device, "input")["name"]
         log.info("microphone: %s @ %d Hz", name, self.rate)
+
+    def _pick_device(self, sd) -> int | None:
+        """Sound server running: use its default input (the router has already made the best device the default).
+        Otherwise match AUDIO_INPUT_MATCH among the raw ALSA devices."""
+        self.audio.refresh(force=True)
+        inputs = [(i, d["name"]) for i, d in enumerate(sd.query_devices()) if d["max_input_channels"] > 0]
+        if self.audio.mode == "pulse":
+            for want in ("pipewire", "pulse", "default"):
+                for i, name in inputs:
+                    if name.lower() == want:
+                        return i
+            return None
+        match = self.s.audio_input_match.lower()
+        for i, name in inputs:
+            if match and match in name.lower():
+                return i
+        log.warning("no input device matching '%s'; using system default", self.s.audio_input_match)
+        return None
 
     def _threshold(self) -> float:
         return max(self.s.vad_min_rms, self.noise * 3.0)
@@ -86,6 +99,7 @@ class Recorder:
                         if quiet >= silence_blocks or len(frames) >= max_blocks:
                             break
         except Exception as exc:
+            self.audio.refresh(force=True)  # a device may have just disconnected
             if time.time() - self._last_err > 60:
                 log.error("microphone error: %s", exc)
                 self._last_err = time.time()

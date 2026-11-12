@@ -6,6 +6,7 @@ import logging
 import time
 
 from app import __version__
+from app.audio.devices import AudioRouter
 from app.audio.recorder import Recorder
 from app.audio.stt import STT
 from app.audio.tts import TTS
@@ -31,6 +32,7 @@ class Runtime:
         self.store = MemoryStore(s)
         self.router = LLMRouter(s)
         self.decision = Decision(s, self.router.ollama)
+        self.audio = AudioRouter(s)
         self.stt = STT(s)
         self.tts: TTS | None = None
         self.recorder: Recorder | None = None
@@ -65,11 +67,18 @@ class Runtime:
         if self.s.headless:
             self.health.update({"camera": "headless", "microphone": "headless", "speaker": "headless"})
         else:
-            self.tts = TTS(self.s)
+            def check_audio():
+                self.audio.scan()
+                if self.audio.mode == "pulse" and not (self.audio.source and self.audio.sink):
+                    raise RuntimeError("sound server is running but no microphone and speaker were found "
+                                       "(is the Bluetooth or USB device connected?)")
+
+            self._try("audio", check_audio)
+            self.tts = TTS(self.s, self.audio)
             self._try("speaker", self.tts.load)
             if not self.tts.ready:
                 self.health["speaker"] = "unavailable: no TTS engine"
-            self.recorder = Recorder(self.s)
+            self.recorder = Recorder(self.s, self.audio)
             if not self._try("microphone", self.recorder.open):
                 self.recorder = None
             camera = Camera(self.s)
@@ -109,6 +118,7 @@ class Runtime:
             "version": __version__,
             "uptime_sec": round(time.time() - self.started),
             "health": self.health,
+            "audio": self.audio.status(),
             "robot": self.orch.describe(),
             "presence": None if not w else {
                 "face_present": w.face_present, "status": w.status, "name": w.name, "score": round(w.score, 3)},

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hardware and service checks. Usage: python scripts/diagnose.py [devices|camera|faces|mic|speaker|llm|meta|stt-bench|all]"""
+"""Hardware and service checks. Usage: python scripts/diagnose.py [audio|devices|camera|faces|mic|speaker|llm|meta|meta-tokens|stt-bench|all]"""
 import sys
 import time
 from pathlib import Path
@@ -9,6 +9,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.config import Settings  # noqa: E402
 
 s = Settings.from_env()
+
+
+def audio():
+    from app.audio.devices import AudioRouter
+    r = AudioRouter(s)
+    r.scan()
+    st = r.status()
+    print(f"mode={st['mode']} (AUDIO_BACKEND={st['backend']}, priority={st['priority']})")
+    print("microphones:", st["microphones"] or "none")
+    print("speakers:   ", st["speakers"] or "none")
+    print(f"chosen -> microphone={st['microphone']}  speaker={st['speaker']}")
+    if st["mode"] == "alsa":
+        print("No sound server found: using AUDIO_INPUT_MATCH / AUDIO_OUTPUT_DEVICE. For Bluetooth install pipewire-pulse (see README).")
 
 
 def devices():
@@ -56,13 +69,16 @@ def mic():
     from app.audio.stt import STT
     r = Recorder(s)
     r.open()
-    print("Say something...")
-    audio = r.listen(wait_sec=8)
-    if audio is None:
-        print("Nothing heard. Lower VAD_MIN_RMS or check AUDIO_INPUT_MATCH.")
-        return
-    t0 = time.time()
-    print("heard:", STT(s).transcribe(audio), f"({time.time() - t0:.1f}s)")
+    stt = STT(s)
+    for phrase in ("yes", "yes, remember me", "hello Sonku"):
+        print(f'\nSay "{phrase}" now...')
+        audio = r.listen(wait_sec=8)
+        if audio is None:
+            print(f"  nothing recorded: loudest sound {r.last_peak:.0f}, needs more than {r.last_thr:.0f}. Speak louder/closer or lower VAD_MIN_RMS.")
+            continue
+        t0 = time.time()
+        text, lang = stt.transcribe(audio)
+        print(f"  recorded {len(audio) / 16000:.1f}s (loudest {r.last_peak:.0f}, threshold {r.last_thr:.0f}) -> [{lang}] {text!r} in {time.time() - t0:.1f}s")
 
 
 def speaker():
@@ -106,6 +122,22 @@ def meta():
         print(r.text[:300])
 
 
+def meta_tokens():
+    """Same short question at each reasoning effort: shows what a turn really costs and how fast it is."""
+    from app.llm.meta_client import MetaClient
+    c = MetaClient(s)
+    for effort in ("low", "minimal", "none"):
+        s.meta_reasoning_effort = effort
+        before = dict(c.totals)
+        t0 = time.time()
+        try:
+            text = c.complete("Reply in one short spoken sentence.", [], "Suggest a Raspberry Pi project.")
+        except Exception as exc:
+            text = f"FAILED: {exc}"
+        d = {k: c.totals[k] - before[k] for k in ("input", "cached", "output", "reasoning")}
+        print(f"effort={effort:8} {time.time() - t0:.1f}s tokens={d}  -> {text[:90]!r}")
+
+
 def stt_bench():
     import numpy as np
     from app.audio.recorder import Recorder
@@ -126,11 +158,11 @@ def stt_bench():
         print(f"{backend}: {dt:.1f}s for {secs:.1f}s of audio (real-time factor {dt / secs:.2f}) -> [{lang}] {text}")
 
 
-CHECKS = {"devices": devices, "camera": camera, "faces": faces, "mic": mic, "speaker": speaker, "llm": llm, "meta": meta, "stt-bench": stt_bench}
+CHECKS = {"audio": audio, "devices": devices, "camera": camera, "faces": faces, "mic": mic, "speaker": speaker, "llm": llm, "meta": meta, "meta-tokens": meta_tokens, "stt-bench": stt_bench}
 if __name__ == "__main__":
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
     for name, fn in CHECKS.items():
-        if which in ("all", name) and not (which == "all" and name in ("stt-bench", "mic")):
+        if which in ("all", name) and not (which == "all" and name in ("stt-bench", "mic", "meta-tokens")):
             print(f"\n=== {name} ===")
             try:
                 fn()

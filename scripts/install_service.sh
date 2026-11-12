@@ -4,7 +4,7 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VENV="${VENV:-$HOME/robot_env}"
 TARGET=/etc/systemd/system/sonku.service
-sed -e "s#@USER@#$USER#g" -e "s#@APP_DIR@#$APP_DIR#g" -e "s#@VENV@#$VENV#g" "$APP_DIR/systemd/sonku.service" | sudo tee "$TARGET" >/dev/null
+sed -e "s#@USER@#$USER#g" -e "s#@APP_DIR@#$APP_DIR#g" -e "s#@VENV@#$VENV#g" -e "s#@UID@#$(id -u)#g" "$APP_DIR/systemd/sonku.service" | sudo tee "$TARGET" >/dev/null
 if systemctl list-unit-files | grep -q '^tabletop-robot.service'; then
   echo "Disabling old tabletop-robot.service"
   sudo systemctl disable --now tabletop-robot.service || true

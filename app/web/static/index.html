@@ -72,6 +72,9 @@
         <div class="row" style="margin-top:12px"><button class="btn quiet" id="btn-maint">Run maintenance now</button></div>
       </div>
       <div class="card"><h2>Hardware and services</h2><dl id="health"></dl></div>
+      <div class="card"><h2>Audio devices</h2><dl id="audio"></dl>
+        <div class="row" style="margin-top:12px"><button class="btn quiet" id="btn-rescan">Rescan devices</button></div>
+      </div>
       <div class="card"><h2>Language model</h2><dl id="llm"></dl></div>
     </div>
     <div class="card"><h2>Last turn timing</h2><dl id="timing"></dl></div>
@@ -178,6 +181,11 @@ async function refresh() {
     const g = $("gauge"); g.style.width = Math.max(0.5, Math.min(100, m.percent)) + "%"; g.className = m.status === "full" ? "bad" : m.status === "warning" ? "warn" : "";
     fill("mem", [["People", m.people], ["Face templates", m.faces], ["Conversation turns", m.interactions], ["Database file", fmtBytes(m.db_bytes)]]);
     fill("health", Object.entries(s.health).map(([k, v]) => [k, v, v === "ok" || v === "headless" ? "ok" : "bad"]));
+    const a = s.audio;
+    fill("audio", [["Mode", a.mode === "pulse" ? "sound server (Bluetooth, USB, built-in)" : "direct ALSA"],
+      ["Microphone", a.microphone || (a.mode === "pulse" ? "none found" : "see .env"), a.microphone || a.mode !== "pulse" ? "" : "bad"],
+      ["Speaker", a.speaker || (a.mode === "pulse" ? "none found" : "see .env"), a.speaker || a.mode !== "pulse" ? "" : "bad"],
+      ["Preferred order", a.priority]]);
     const l = s.llm;
     fill("llm", [["Mode", l.configured_backend], ["Last answered by", l.last_backend],
       ["Meta key", l.meta_key_set ? "set" : "missing", l.meta_key_set ? "ok" : "warn"],
@@ -227,6 +235,7 @@ async function loadLogs() {
 async function act(fn, ok) { try { await fn(); if (ok) toast(ok); } catch (e) { toast(e.message); } }
 
 $("btn-maint").onclick = () => act(async () => { const r = await api("/memory/maintenance", "POST"); toast("Done: " + JSON.stringify(r)); refresh(); });
+$("btn-rescan").onclick = () => act(async () => { await api("/audio/rescan", "POST"); refresh(); }, "Rescanned");
 $("btn-pause").onclick = () => act(async () => { await api("/control/" + ($("btn-pause").dataset.paused === "true" ? "resume" : "pause"), "POST"); refresh(); });
 $("btn-end").onclick = () => act(async () => { await api("/control/end-session", "POST"); refresh(); }, "Conversation ended");
 $("btn-chat").onclick = () => act(async () => { $("chat-out").textContent = "…"; const r = await api("/chat", "POST", { text: $("chat-text").value, speak: $("chat-speak").checked }); $("chat-out").textContent = r.reply; refresh(); });

@@ -50,7 +50,9 @@ sudo cp systemd/sonku.service /etc/systemd/system/sonku.service
 sudo systemctl disable --now tabletop-robot.service
 
 # 3. Reload systemd, enable on boot, start
-sudo systemctl daemon-reload
+sudo loginctl enable-linger dhirajpatra
+bluetoothctl trust 30:63:71:04:38:BB # for BT mic speaker
+sudo systemctl daemon-reload && sudo systemctl restart sonku.service
 sudo systemctl enable --now sonku.service
 
 # 4. Check it
@@ -61,5 +63,7 @@ journalctl -u sonku.service -n 40 --no-pager
 ~/robot_env/bin/pip install torch
 cat /home/dhirajpatra/mithi-v1-flash/requirements.txt   # install anything else the model repo lists
 ~/robot_env/bin/python test_mithi.py                    # your existing script; confirms Mithi speaks on its own
+
+
 
 echo "[4/4] Setup Completed Successfully!"

@@ -66,6 +66,19 @@ Only 128-number face templates are stored — no photos, no audio.
 ## Tuning for speed
 `diagnose.py llm` shows the time to the first sentence per backend, and every turn logs `stt_ms`, `llm_first_sentence_ms`, `first_audio_ms`, `total_ms` (also on the dashboard). Lower `FALLBACK_TIMEOUT` so a slow Meta call falls back sooner; after two failures Meta is skipped for 60 s.
 
+## Audio devices (Bluetooth, USB headset, built-in)
+Sonku asks the sound server (PipeWire) which microphones and speakers exist, ranks them by `AUDIO_PRIORITY`
+(default `bluetooth,usb,other`), makes the best ones the system defaults, and re-checks every 10 s, so a Bluetooth
+headset that connects later is picked up and a disconnected one is dropped. The dashboard's **Audio devices** card
+shows the choice and has a *Rescan* button. `diagnose.py audio` prints the same from the shell.
+- Set `AUDIO_PRIORITY=usb,bluetooth,other` to prefer the Jabra when both are connected.
+- Bluetooth microphones need the headset (HFP) profile; in music (A2DP) mode only the speaker exists and the
+  microphone is taken from the next device in the list.
+- Pair once and trust the device so it reconnects at boot: `bluetoothctl trust <MAC>`.
+- The service must reach your PipeWire session: `sudo loginctl enable-linger $USER` and keep
+  `Environment=XDG_RUNTIME_DIR=/run/user/<uid>` (`id -u`) in `sonku.service` (the template does this).
+- No sound server? Set `AUDIO_BACKEND=alsa` and use `AUDIO_INPUT_MATCH` / `AUDIO_OUTPUT_DEVICE`.
+
 ## Troubleshooting
 | Symptom | Check |
 |---|---|

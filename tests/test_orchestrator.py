@@ -118,3 +118,42 @@ def test_llm_failure_speaks_fallback(rt):
     rt.router.reply_stream = broken
     reply = rt.orch.handle_utterance("sonku hello there friend", "en")
     assert "can't reach my brain" in reply
+
+
+def test_explicit_request_to_remember_skips_consent_question(rt):
+    rt.watcher = FakeWatcher(Presence(face_present=True, status="unknown"))
+    rt.faces = FakeFaces()
+    stub_llm(rt)
+    rt.orch.handle_utterance("hi sonku", "en")
+    rt.orch.handle_utterance("my name is Dheeraj and please remember my face", "en")
+    people = rt.store.list_people()
+    assert [p["name"] for p in people] == ["Dheeraj"] and people[0]["face_count"] == 3
+    assert rt.orch.session.stage == "chat"
+
+
+def test_consent_question_gets_extra_time_and_unclear_answer_is_retried(rt):
+    import time
+    rt.watcher = FakeWatcher(Presence(face_present=True, status="unknown"))
+    rt.faces = FakeFaces()
+    stub_llm(rt)
+    rt.orch.handle_utterance("sonku", "en")
+    rt.orch.handle_utterance("I'm Ravi", "en")
+    sess = rt.orch.session
+    sess.last_activity = time.time() - (rt.s.session_timeout_sec + 10)  # past the chat timeout, inside the doubled one
+    rt.orch._check_session_expiry()
+    assert rt.orch.session is sess
+    rt.orch.handle_utterance("has it taken", "en")
+    assert rt.orch.session.stage == "await_consent" and rt.store.list_people() == []
+    rt.orch.handle_utterance("yes", "en")
+    assert [p["name"] for p in rt.store.list_people()] == ["Ravi"]
+
+
+def test_take_my_photo_counts_as_yes_at_consent_stage(rt):
+    rt.watcher = FakeWatcher(Presence(face_present=True, status="unknown"))
+    rt.faces = FakeFaces()
+    stub_llm(rt)
+    rt.orch.handle_utterance("sonku", "en")
+    rt.orch.handle_utterance("I'm Meera", "en")
+    assert rt.orch.session.stage == "await_consent"
+    rt.orch.handle_utterance("yes, remember me", "en")
+    assert [p["name"] for p in rt.store.list_people()] == ["Meera"]

@@ -43,3 +43,17 @@ def test_names_and_yes_no():
     assert I.extract_name("I am fine") is None and I.extract_name("what time is it today") is None
     assert I.is_yes("yes please") and not I.is_yes("no thanks") and I.is_no("I don't want that") and I.is_yes("हाँ")
     assert I.is_forget("please forget me") and I.is_goodbye("ok bye")
+
+
+def test_name_stops_at_filler_and_consent_is_implied():
+    said = "yeah my name is Dheeraj and can you please remember my face by taking my photos"
+    assert I.extract_name(said) == "Dheeraj" and I.implies_consent(said)
+    assert not I.implies_consent("you just took my photo can you please check my name is Dheeraj")
+    assert I.is_yes("go ahead") and I.is_yes("yeah sure") and not I.is_yes("has it taken")
+
+
+def test_generic_words_in_wake_words_do_not_trigger():
+    noisy = ["sonku", "hi", "hello", "yes", "no", "please", "good morning", "okay"]
+    assert not I.find_wake_word("hello there how are you", noisy)[0]
+    assert not I.find_wake_word("yes please", noisy)[0]
+    assert I.find_wake_word("hi Shanku", noisy)[0]

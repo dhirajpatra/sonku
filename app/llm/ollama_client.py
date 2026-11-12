@@ -8,6 +8,7 @@ from typing import Iterator
 import requests
 
 from app.config import Settings
+from app.llm.prompts import time_note
 from app.utils.text import SentenceChunker, clean_for_tts
 
 log = logging.getLogger("sonku.ollama")
@@ -25,7 +26,8 @@ class OllamaClient:
     def _messages(self, system: str, history: list[tuple[str, str]], user_text: str, image_b64: str | None) -> list[dict]:
         msgs = [{"role": "system", "content": system}]
         msgs += [{"role": r, "content": t} for r, t in history]
-        last: dict = {"role": "user", "content": user_text}
+        note = time_note(user_text)
+        last: dict = {"role": "user", "content": f"{user_text}\n{note}" if note else user_text}
         if image_b64 and self.s.ollama_vision:
             last["images"] = [image_b64]
         return msgs + [last]

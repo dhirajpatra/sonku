@@ -69,6 +69,7 @@ class Orchestrator(threading.Thread):
                 time.sleep(1.0)
 
     def _tick(self) -> None:
+        self.rt.audio.refresh()  # picks up Bluetooth/USB devices connected or removed while running
         self._check_session_expiry()
         self._maybe_greet()
         self.state = "listening" if self.session else "idle"
@@ -80,6 +81,8 @@ class Orchestrator(threading.Thread):
         text, lang = self.rt.stt.transcribe(audio, self.session.lang if self.session else None)
         stt_ms = int((time.time() - t0) * 1000)
         if not text:
+            log.info("[mic] captured %.1fs of sound (loudest %d, threshold %d) but speech-to-text returned nothing",
+                     len(audio) / 16000, self.rt.recorder.last_peak, self.rt.recorder.last_thr)
             return
         log.info("[heard %s] %s", lang, text)
         self.handle_utterance(text, lang, stt_ms=stt_ms)
@@ -202,7 +205,7 @@ class Orchestrator(threading.Thread):
         return None
 
     def _stage_consent(self, sess: Session, text: str, lang: str) -> None:
-        if intents.is_yes(text):
+        if intents.is_yes(text) or intents.implies_consent(text):
             self._enroll(sess, sess.pending_name or "Friend", lang)
         elif intents.is_no(text) or sess.consent_attempts >= 1:
             sess.stage = "chat"
@@ -268,7 +271,7 @@ class Orchestrator(threading.Thread):
             person = self.rt.store.get_person(sess.person_id)
             summary = person["summary"] if person else ""
         system = prompts.system_prompt(lang, sess.name, summary)
-        history = sess.history[-self.s.history_turns * 2:]
+        history = list(sess.history)
         marks: dict = {}
 
         def sentences():
@@ -299,6 +302,9 @@ class Orchestrator(threading.Thread):
         log.info("turn timing: %s", self.metrics)
         if reply and persist:
             sess.history += [("user", text), ("assistant", reply)]
+            limit = self.s.history_turns * 2
+            if len(sess.history) > limit:  # drop the oldest half in one go: a sliding window would change the prefix every turn
+                del sess.history[: limit // 2]
             self.rt.store.add_interaction(sess.person_id, lang, text, reply, self.rt.router.last_backend, total, bool(image))
         sess.last_activity = time.time()
         self.state = "listening" if self.session else "idle"

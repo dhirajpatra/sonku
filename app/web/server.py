@@ -76,6 +76,11 @@ def create_app(rt: Runtime) -> FastAPI:
             raise HTTPException(503, "Camera is not available")
         return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
+    @api.post("/audio/rescan")
+    def rescan_audio() -> dict:
+        rt.audio.scan()
+        return rt.audio.status()
+
     # ---- people ---------------------------------------------------------------
     @api.get("/people")
     def people() -> list[dict]:

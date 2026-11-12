@@ -60,6 +60,7 @@ EDITABLE: dict[str, tuple[str, str, list[str] | None]] = {
     "max_memory_gb": ("float", "Memory limit (GB)", None),
     "meta_read_timeout": ("float", "Meta API timeout before fallback (seconds)", None),
     "wake_words": ("str", "Wake words (comma separated)", None),
+    "audio_priority": ("str", "Audio device priority (bluetooth, usb, other)", None),
 }
 
 
@@ -74,6 +75,7 @@ class Settings:
     meta_read_timeout: float
     meta_cooldown_sec: int
     max_output_tokens: int
+    meta_reasoning_effort: str
     ollama_base_url: str
     ollama_model: str
     decision_model: str
@@ -94,6 +96,8 @@ class Settings:
     tts_fallback_gtts: bool
     audio_input_match: str
     audio_output_device: str
+    audio_backend: str
+    audio_priority: str
     vad_min_rms: float
     vad_silence_sec: float
     max_utterance_sec: float
@@ -151,6 +155,7 @@ class Settings:
             meta_read_timeout=_f("FALLBACK_TIMEOUT", 10.0),
             meta_cooldown_sec=_i("META_COOLDOWN_SEC", 60),
             max_output_tokens=_i("MAX_OUTPUT_TOKENS", 500),
+            meta_reasoning_effort=_s("META_REASONING_EFFORT", "low").lower(),
             ollama_base_url=base.rstrip("/"),
             ollama_model=_s("OLLAMA_MODEL", "qwen3.5:2b-q4_K_M"),
             decision_model=_s("DECISION_MODEL", "qwen3.5:0.8b"),
@@ -170,6 +175,8 @@ class Settings:
             tts_fallback_gtts=_b("TTS_FALLBACK_GTTS", True),
             audio_input_match=_s("AUDIO_INPUT_MATCH", "Jabra"),
             audio_output_device=_s("AUDIO_OUTPUT_DEVICE", "default"),
+            audio_backend=_s("AUDIO_BACKEND", "auto").lower(),
+            audio_priority=_s("AUDIO_PRIORITY", "bluetooth,usb,other").lower().replace(" ", ""),
             vad_min_rms=_f("VAD_MIN_RMS", 350.0),
             vad_silence_sec=_f("VAD_SILENCE_SEC", 0.9),
             max_utterance_sec=_f("MAX_UTTERANCE_SEC", 12.0),
@@ -231,6 +238,11 @@ class Settings:
             raise ValueError("max_memory_gb must be positive")
         if key == "wake_words" and not val:
             raise ValueError("at least one wake word is required")
+        if key == "audio_priority":
+            parts = [x.strip() for x in str(val).lower().split(",") if x.strip()]
+            if not parts or any(x not in ("bluetooth", "usb", "other") for x in parts):
+                raise ValueError("audio_priority must be a comma list of: bluetooth, usb, other")
+            val = ",".join(parts)
         setattr(self, key, val)
         return val
 

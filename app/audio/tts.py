@@ -15,6 +15,7 @@ import threading
 import time
 from typing import Iterable
 
+from app.audio.devices import AudioRouter
 from app.config import Settings
 from app.utils.lang import MITHI_LANGS, normalize_lang
 from app.utils.text import clean_for_tts
@@ -24,8 +25,9 @@ _DONE = object()
 
 
 class TTS:
-    def __init__(self, s: Settings):
+    def __init__(self, s: Settings, audio: AudioRouter | None = None):
         self.s = s
+        self.audio = audio or AudioRouter(s)
         self.mithi = None
         self.ready = False
         self.first_audio_ts = 0.0
@@ -79,11 +81,11 @@ class TTS:
 
     def _play(self, path: str) -> None:
         try:
-            self._proc = subprocess.Popen(["aplay", "-q", "-D", self.s.audio_output_device, path],
-                                          stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            cmd = self.audio.player_cmd(path)
+            self._proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             _out, err = self._proc.communicate()
             if self._proc.returncode not in (0, -15):
-                log.error("aplay failed: %s", (err or b"").decode(errors="replace").strip())
+                log.error("playback failed (%s): %s", self._proc.args[0] if self._proc else "?", (err or b"").decode(errors="replace").strip())
         finally:
             self._proc = None
             try:
