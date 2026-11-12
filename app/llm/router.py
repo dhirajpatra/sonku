@@ -85,4 +85,5 @@ class LLMRouter:
             "ollama_model": self.s.ollama_model,
             "ollama_up": self.ollama.healthy(),
             "last_error": self.last_error,
+            "meta_usage": dict(self.meta.totals),
         }

@@ -182,6 +182,7 @@ async function refresh() {
     fill("llm", [["Mode", l.configured_backend], ["Last answered by", l.last_backend],
       ["Meta key", l.meta_key_set ? "set" : "missing", l.meta_key_set ? "ok" : "warn"],
       ["Meta skipped for", l.meta_skipped_for_sec ? l.meta_skipped_for_sec + " s after failures" : "no", l.meta_skipped_for_sec ? "warn" : ""],
+      ["Meta tokens (since start)", l.meta_usage ? `${l.meta_usage.calls} calls · in ${l.meta_usage.input} (cached ${l.meta_usage.cached}) · out ${l.meta_usage.output} (reasoning ${l.meta_usage.reasoning}) · empty ${l.meta_usage.empty}` : "–"],
       ["Ollama (" + l.ollama_model + ")", l.ollama_up ? "running" : "not reachable", l.ollama_up ? "ok" : "bad"], ["Last error", l.last_error || "none"]]);
     const t = r.last_turn || {}, ms = (v) => v == null ? "–" : v + " ms";
     fill("timing", [["Speech to text", ms(t.stt_ms)], ["First sentence from LLM", ms(t.llm_first_sentence_ms)], ["First audio out", ms(t.first_audio_ms)], ["Whole turn", ms(t.total_ms)], ["Camera used", t.vision ? "yes" : "no"]]);
