@@ -12,3 +12,4 @@ sounddevice>=0.4.6
 SpeechRecognition>=3.10
 gTTS>=2.5
 spacy>=3.6
+safetensors
