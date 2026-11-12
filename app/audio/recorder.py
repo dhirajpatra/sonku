@@ -24,6 +24,8 @@ class Recorder:
         self.rate = TARGET_RATE
         self.noise = 0.0
         self._last_err = 0.0
+        self.last_peak = 0.0  # loudest block of the last listen() call
+        self.last_thr = 0.0   # speech threshold in force during it
 
     def open(self) -> None:
         import sounddevice as sd
@@ -57,6 +59,7 @@ class Recorder:
         pre: deque = deque(maxlen=10)
         frames: list[np.ndarray] = []
         started, loud, quiet = False, 0, 0
+        self.last_peak = 0.0
         t_start = time.time()
         silence_blocks = int(self.s.vad_silence_sec / 0.03)
         max_blocks = int(self.s.max_utterance_sec / 0.03)
@@ -67,6 +70,7 @@ class Recorder:
                     x = data[:, 0]
                     rms = float(np.sqrt(np.mean(x.astype(np.float32) ** 2)))
                     thr = self._threshold()
+                    self.last_peak, self.last_thr = max(self.last_peak, rms), thr
                     if not started:
                         if rms < thr:
                             self.noise = rms if self.noise == 0 else 0.95 * self.noise + 0.05 * rms
