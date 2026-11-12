@@ -64,6 +64,19 @@ journalctl -u sonku.service -n 40 --no-pager
 cat /home/dhirajpatra/mithi-v1-flash/requirements.txt   # install anything else the model repo lists
 ~/robot_env/bin/python test_mithi.py                    # your existing script; confirms Mithi speaks on its own
 
+# 1. Kill the old program by hand (systemctl can't stop a broken unit)
+pgrep -af robot_main            # should show PID 1797
+sudo kill 1797
+sleep 2; pgrep -af robot_main || echo "old program is gone"
 
+# 3. Check the file has no placeholders left
+grep -n "@" /etc/systemd/system/sonku.service || echo "no placeholders left"
+systemd-analyze verify /etc/systemd/system/sonku.service
+
+# 4. Load and start it
+sudo systemctl daemon-reload
+sudo systemctl enable --now sonku.service
+systemctl status sonku.service --no-pager
+journalctl -u sonku.service -n 30 --no-pager
 
 echo "[4/4] Setup Completed Successfully!"
