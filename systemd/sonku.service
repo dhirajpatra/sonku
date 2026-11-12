@@ -10,7 +10,8 @@ SupplementaryGroups=audio video
 WorkingDirectory=/home/dhirajpatra/sonku
 Environment=PYTHONUNBUFFERED=1
 Environment=JACK_NO_START_SERVER=1
-Environment=XDG_RUNTIME_DIR=/run/user/$(id -u)
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=PULSE_SERVER=unix:/run/user/1000/pulse/native
 ExecStart=/home/dhirajpatra/robot_env/bin/python -m app
 Restart=always
 RestartSec=5
