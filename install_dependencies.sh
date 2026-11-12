@@ -3,7 +3,7 @@ set -e
 
 echo "[1/4] Installing System Packages..."
 # sudo apt update && sudo apt install -y portaudio19-dev espeak-ng libcap-dev libatlas-base-dev
-sudo apt update && sudo apt install -y portaudio19-dev espeak-ng libcap-dev libopenblas-dev pipewire-pulse libspa-0.2-bluetooth pipewire-audio-client-libraries pipewire-alsa bluetooth bluez blueman
+sudo apt update && sudo apt install -y portaudio19-dev espeak-ng libcap-dev libopenblas-dev pipewire-pulse libspa-0.2-bluetooth pipewire-audio-client-libraries pipewire-alsa bluetooth bluez blueman libasound2-plugins
 
 # 1. Install the Python venv module (if not already installed)
 sudo apt update
