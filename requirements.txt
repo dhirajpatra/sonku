@@ -13,3 +13,4 @@ SpeechRecognition>=3.10
 gTTS>=2.5
 spacy>=3.6
 safetensors
+sentencepiece>=0.2.0
