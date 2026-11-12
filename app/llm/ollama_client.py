@@ -37,12 +37,18 @@ class OllamaClient:
             "options": {"num_ctx": self.s.ollama_num_ctx, "num_predict": num_predict, "temperature": 0.6},
         }
 
+    def _http_error(self, r) -> str:
+        body = r.text[:200]
+        hint = f" - is the model installed? run: ollama pull {self.s.ollama_model}" if r.status_code == 404 else ""
+        return f"HTTP {r.status_code}: {body}{hint}"
+
     def stream(self, system: str, history, user_text: str, image_b64: str | None = None) -> Iterator[str]:
         payload = self._payload(self.s.ollama_model, self._messages(system, history, user_text, image_b64), True, self.s.ollama_num_predict)
         chunker = SentenceChunker()
         try:
             with self.http.post(f"{self.s.ollama_base_url}/api/chat", json=payload, stream=True, timeout=(3, 60)) as r:
-                r.raise_for_status()
+                if r.status_code != 200:
+                    raise OllamaError(self._http_error(r))
                 for line in r.iter_lines():
                     if not line:
                         continue
@@ -64,7 +70,8 @@ class OllamaClient:
         payload["options"]["temperature"] = 0.1
         try:
             r = self.http.post(f"{self.s.ollama_base_url}/api/chat", json=payload, timeout=(3, timeout))
-            r.raise_for_status()
+            if r.status_code != 200:
+                raise OllamaError(self._http_error(r))
             return clean_for_tts(r.json().get("message", {}).get("content", ""))
         except (requests.RequestException, ValueError) as exc:
             raise OllamaError(str(exc)) from exc
@@ -72,9 +79,13 @@ class OllamaClient:
     def warm(self, model: str | None = None) -> None:
         """Load the model into RAM so the first real question is fast."""
         try:
-            self.http.post(f"{self.s.ollama_base_url}/api/chat",
-                           json={"model": model or self.s.ollama_model, "keep_alive": self.s.ollama_keep_alive}, timeout=(3, 120))
-            log.info("Ollama model %s warmed", model or self.s.ollama_model)
+            name = model or self.s.ollama_model
+            r = self.http.post(f"{self.s.ollama_base_url}/api/chat",
+                               json={"model": name, "keep_alive": self.s.ollama_keep_alive}, timeout=(3, 120))
+            if r.status_code == 200:
+                log.info("Ollama model %s warmed", name)
+            else:
+                log.error("Ollama warm-up for %s failed: %s", name, self._http_error(r))
         except requests.RequestException as exc:
             log.warning("Ollama warm-up failed: %s", exc)
 

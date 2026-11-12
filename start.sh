@@ -1,4 +1,6 @@
-source ~/robot_env/bin/activate
+#!/usr/bin/env bash
+# Start (or restart) Sonku and follow its log. Ctrl+C leaves the service running.
+set -e
 
 # 1. Check you really have the new code (all three should exist)
 ls app/main.py systemd/sonku.service scripts/install_service.sh

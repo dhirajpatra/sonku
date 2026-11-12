@@ -150,7 +150,7 @@ class Settings:
             meta_connect_timeout=_f("META_CONNECT_TIMEOUT", 4.0),
             meta_read_timeout=_f("FALLBACK_TIMEOUT", 10.0),
             meta_cooldown_sec=_i("META_COOLDOWN_SEC", 60),
-            max_output_tokens=_i("MAX_OUTPUT_TOKENS", 200),
+            max_output_tokens=_i("MAX_OUTPUT_TOKENS", 500),
             ollama_base_url=base.rstrip("/"),
             ollama_model=_s("OLLAMA_MODEL", "qwen3.5:2b-q4_K_M"),
             decision_model=_s("DECISION_MODEL", "qwen3.5:0.8b"),

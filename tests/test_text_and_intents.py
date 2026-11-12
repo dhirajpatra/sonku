@@ -31,6 +31,8 @@ def test_wake_word_variants():
     assert I.find_wake_word("Hey Sonko what's the weather", w) == (True, "what's the weather")
     assert I.find_wake_word("son ku how are you", w) == (True, "how are you")
     assert I.find_wake_word("सोनकू नमस्ते", w)[0]
+    assert I.find_wake_word("hi Shanku hello Shanku", w)[0]  # real Google STT mishearing seen on the Pi
+    assert I.find_wake_word("shonku what time is it", w) == (True, "what time is it")
     assert not I.find_wake_word("what's the weather", w)[0]
     assert not I.find_wake_word("the ship sunk yesterday", w)[0]
 

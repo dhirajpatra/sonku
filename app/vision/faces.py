@@ -56,39 +56,14 @@ class FaceEngine:
         n = float(np.linalg.norm(v))
         return v / n if n > 0 else v
 
-    def match(self, target_embedding: np.ndarray, gallery: dict[int, list[np.ndarray]] | list) -> tuple[int | None, float]:
-        """Matches target embedding against gallery items.
-        
-        Handles gallery passed either as:
-        - dict: {person_id: [emb1, emb2, ...]}
-        - list: [(person_id, emb), ...] or list of embeddings
-        """
-        best_score = -1.0
-        best_pid = None
-        threshold = getattr(self.s, "face_sim_threshold", 0.363)
-
-        with self._lock:
-            # Handle gallery passed as a list
-            if isinstance(gallery, list):
-                for item in gallery:
-                    if isinstance(item, (tuple, list)) and len(item) == 2:
-                        pid, sample = item
-                    else:
-                        pid, sample = None, item
-                    
-                    score = float(self.rec.match(target_embedding, sample, cv2.FaceRecognizerSF_FR_COSINE))
-                    if score > best_score:
-                        best_score = score
-                        if score >= threshold:
-                            best_pid = pid
-            # Handle gallery passed as a dict
-            elif isinstance(gallery, dict):
-                for pid, embeddings in gallery.items():
-                    for sample in embeddings:
-                        score = float(self.rec.match(target_embedding, sample, cv2.FaceRecognizerSF_FR_COSINE))
-                        if score > best_score:
-                            best_score = score
-                            if score >= threshold:
-                                best_pid = pid
-
-        return (best_pid, best_score)
+    def match(self, emb: np.ndarray, gallery: list[tuple[int, np.ndarray]]) -> tuple[int | None, float]:
+        """Best cosine match per person; returns (person_id, score) or (None, best_score) below threshold."""
+        best_pid, best = None, -1.0
+        for pid, ref in gallery:
+            n = float(np.linalg.norm(ref))
+            score = float(np.dot(emb, ref / n)) if n else -1.0
+            if score > best:
+                best_pid, best = pid, score
+        if best_pid is not None and best >= self.s.face_match_threshold:
+            return best_pid, best
+        return None, best

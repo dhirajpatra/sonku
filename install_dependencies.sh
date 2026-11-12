@@ -29,11 +29,33 @@ if ! command -v ollama &> /dev/null; then
     echo "Ollama CLI not found. Please install Ollama CLI first."
     exit 1
 fi
-ollama pull qwen3.5:2b-q4_K_M
+
+ollama list                          # see which tags are installed
+ollama pull qwen3.5:2b-q4_K_M        # or set OLLAMA_MODEL in .env to a tag from the list
+ollama pull qwen3.5:0.8b             # decision model; set DECISION_MODEL to whatever "tev1:0.8b" really is
 
 # 4. Set ALSA/PortAudio environment flags and run in foreground
 export JACK_NO_START_SERVER=1
 export PA_ALSA_PLUGHOST=1
 export PA_ALSA_INITIAL_BUFFER_SIZE=4096
+
+# 1. Install your edited unit (use your edited file's path)
+sudo cp systemd/sonku.service /etc/systemd/system/sonku.service
+
+# 2. Retire the old service so it doesn't hold the mic and camera
+sudo systemctl disable --now tabletop-robot.service
+
+# 3. Reload systemd, enable on boot, start
+sudo systemctl daemon-reload
+sudo systemctl enable --now sonku.service
+
+# 4. Check it
+systemctl status sonku.service --no-pager
+journalctl -u sonku.service -n 40 --no-pager
+
+# 5. Test Mithi-v1-flash TTS model
+~/robot_env/bin/pip install torch
+cat /home/dhirajpatra/mithi-v1-flash/requirements.txt   # install anything else the model repo lists
+~/robot_env/bin/python test_mithi.py                    # your existing script; confirms Mithi speaks on its own
 
 echo "[4/4] Setup Completed Successfully!"

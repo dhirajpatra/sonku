@@ -11,9 +11,8 @@ WorkingDirectory=/home/dhirajpatra/sonku
 EnvironmentFile=/home/dhirajpatra/sonku/.env
 Environment=PYTHONUNBUFFERED=1
 Environment=JACK_NO_START_SERVER=1
-Environment="PA_ALSA_PLUGHOST=1"
-ExecStart=/home/dhirajpatra/robot_env/bin/python robot_main.py
-Restart=on-failure
+ExecStart=/home/dhirajpatra/robot_env/bin/python -m app
+Restart=always
 RestartSec=5
 TimeoutStopSec=20
 MemoryMax=12G

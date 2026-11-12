@@ -95,6 +95,8 @@ class Runtime:
         for t in (self.orch, self.maint, self.watcher):
             if t:
                 t.stop()
+        if self.orch.is_alive():
+            self.orch.join(timeout=4)  # let the mic read finish so PortAudio is not torn down mid-read
         if self.tts:
             self.tts.stop()
         if self.camera:
