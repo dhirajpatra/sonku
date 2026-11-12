@@ -39,6 +39,8 @@ export JACK_NO_START_SERVER=1
 export PA_ALSA_PLUGHOST=1
 export PA_ALSA_INITIAL_BUFFER_SIZE=4096
 
+wpctl set-volume @DEFAULT_SINK@ 1.0
+
 # 1. Install your edited unit (use your edited file's path)
 sudo cp systemd/sonku.service /etc/systemd/system/sonku.service
 
