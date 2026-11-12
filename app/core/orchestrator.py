@@ -95,7 +95,8 @@ class Orchestrator(threading.Thread):
         if not sess:
             return
         now = time.time()
-        if now - sess.last_activity > self.s.session_timeout_sec:
+        limit = self.s.session_timeout_sec * (1 if sess.stage == "chat" else 2)  # more time to answer a question
+        if now - sess.last_activity > limit:
             self._end_session("timeout")
             return
         w = self.rt.watcher
@@ -193,7 +194,7 @@ class Orchestrator(threading.Thread):
                 self._say(phrase("ask_name_again", phrase_lang("ask_name_again", lang)), lang)
             return None
         sess.pending_name = name
-        if self.s.require_face_consent:
+        if self.s.require_face_consent and not intents.implies_consent(text):
             sess.stage = "await_consent"
             self._say(phrase("ask_consent", phrase_lang("ask_consent", lang), name=name), lang)
             return None
@@ -208,7 +209,7 @@ class Orchestrator(threading.Thread):
             self._say(phrase("declined", phrase_lang("declined", lang)), lang)
         else:
             sess.consent_attempts += 1
-            self._say(phrase("ask_consent", phrase_lang("ask_consent", lang), name=sess.pending_name or ""), lang)
+            self._say(phrase("consent_retry", phrase_lang("consent_retry", lang)), lang)
         return None
 
     def _enroll(self, sess: Session, name: str, lang: str) -> None:
@@ -253,6 +254,8 @@ class Orchestrator(threading.Thread):
             self.rt.tts.speak_stream([text], lang)
         else:
             log.info("[Sonku %s] (no speaker) %s", lang, text)
+        if self.session:  # the idle timer starts when the robot stops talking, not when the person did
+            self.session.last_activity = time.time()
 
     def _chat(self, sess: Session, text: str, lang: str, stt_ms: int = 0, speak: bool = True, persist: bool = True) -> str:
         t0 = time.time()
@@ -297,6 +300,7 @@ class Orchestrator(threading.Thread):
         if reply and persist:
             sess.history += [("user", text), ("assistant", reply)]
             self.rt.store.add_interaction(sess.person_id, lang, text, reply, self.rt.router.last_backend, total, bool(image))
+        sess.last_activity = time.time()
         self.state = "listening" if self.session else "idle"
         return reply
 

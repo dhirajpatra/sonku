@@ -31,6 +31,7 @@ PHRASES: dict[str, dict[str, str]] = {
         "en": "Nice to meet you, {name}! May I remember your face so I can greet you next time? Please say yes or no.",
         "hi": "आपसे मिलकर खुशी हुई, {name}! क्या मैं आपका चेहरा याद रख लूँ ताकि अगली बार आपको पहचान सकूँ? कृपया हाँ या ना कहें।",
     },
+    "consent_retry": {"en": "Sorry, was that a yes or a no? I only save your face if you say yes.", "hi": "माफ़ कीजिए, हाँ या ना? मैं आपका चेहरा तभी सहेजूँगा जब आप हाँ कहेंगे।"},
     "declined": {"en": "Okay, I won't remember your face. How can I help?", "hi": "ठीक है, मैं आपका चेहरा याद नहीं रखूँगा। मैं कैसे मदद करूँ?"},
     "enrolled": {"en": "Thanks, {name}! I'll recognise you next time.", "hi": "धन्यवाद, {name}! अगली बार मैं आपको पहचान लूँगा।"},
     "already_known": {"en": "Oh, I already know you, {name}!", "hi": "अरे, मैं तो आपको पहले से जानता हूँ, {name}!"},

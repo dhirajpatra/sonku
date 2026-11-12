@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hardware and service checks. Usage: python scripts/diagnose.py [devices|camera|faces|mic|speaker|llm|stt-bench|all]"""
+"""Hardware and service checks. Usage: python scripts/diagnose.py [devices|camera|faces|mic|speaker|llm|meta|stt-bench|all]"""
 import sys
 import time
 from pathlib import Path
@@ -93,6 +93,19 @@ def llm():
             print(f"[{backend}] FAILED: {exc}")
 
 
+def meta():
+    import requests
+    base = s.meta_api_url.rsplit("/", 1)[0]  # https://api.meta.ai/v1
+    r = requests.get(f"{base}/models", headers={"Authorization": f"Bearer {s.meta_api_key}"}, timeout=10)
+    print(f"GET {base}/models -> HTTP {r.status_code}")
+    try:
+        ids = [m.get("id") for m in r.json().get("data", [])]
+        print("models:", ids or r.text[:300])
+        print(f"configured META_MODEL={s.meta_model!r} is {'listed' if s.meta_model in ids else 'NOT in that list'}")
+    except Exception:
+        print(r.text[:300])
+
+
 def stt_bench():
     import numpy as np
     from app.audio.recorder import Recorder
@@ -113,7 +126,7 @@ def stt_bench():
         print(f"{backend}: {dt:.1f}s for {secs:.1f}s of audio (real-time factor {dt / secs:.2f}) -> [{lang}] {text}")
 
 
-CHECKS = {"devices": devices, "camera": camera, "faces": faces, "mic": mic, "speaker": speaker, "llm": llm, "stt-bench": stt_bench}
+CHECKS = {"devices": devices, "camera": camera, "faces": faces, "mic": mic, "speaker": speaker, "llm": llm, "meta": meta, "stt-bench": stt_bench}
 if __name__ == "__main__":
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
     for name, fn in CHECKS.items():

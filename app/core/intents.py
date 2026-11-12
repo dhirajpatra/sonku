@@ -27,7 +27,15 @@ _NAME_PATTERNS = [
     re.compile(r"\b(?:my name is|my name's|name is|name's)\s+([^\W\d_]+(?:\s+[^\W\d_]+)?)", re.I | re.U),
     re.compile(r"\b(?:i am|i'm|im|this is|call me|it's|it is)\s+([^\W\d_]+(?:\s+[^\W\d_]+)?)", re.I | re.U),
 ]
-_NAME_STOP = {"fine", "good", "great", "ok", "okay", "here", "back", "sorry", "ready", "not", "the", "a", "an", "your", "so", "just"}
+_NAME_STOP = {"fine", "good", "great", "ok", "okay", "here", "back", "sorry", "ready", "not", "the", "a", "an", "your", "so", "just",
+              "and", "but", "or", "then", "also", "please", "can", "could", "would", "will", "because", "from", "is", "are", "yeah", "yes"}
+# Words that must never act as wake words even if someone lists them in WAKE_WORDS (they are normal speech).
+_GENERIC = GREET_WORDS | {"yes", "no", "please", "thanks", "thankyou", "sorry", "excuseme", "goodmorning", "goodafternoon",
+                          "goodevening", "goodnight", "yeah", "okay"}
+_YES_PHRASES = re.compile(r"\b(go ahead|do it|of course|why not|remember (me|my face)|that'?s fine|sounds good)\b", re.I)
+_CONSENT = re.compile(
+    r"\b(remember|recogni[sz]e|save|store|capture|scan)\b.{0,30}\b(me|my face|face|photo|photos|picture)\b"
+    r"|\b(take|taking)\b.{0,20}\b(photo|photos|picture|face)\b", re.I)
 
 
 def _tokens(text: str) -> list[str]:
@@ -44,7 +52,7 @@ def find_wake_word(text: str, wake_words: list[str]) -> tuple[bool, str]:
     """Return (heard, remainder). Fuzzy because speech recognisers mangle an unusual name like 'Sonku'."""
     raw = text.strip()
     toks = _tokens(raw)
-    targets = {CANON, *[w.replace(" ", "") for w in wake_words]}
+    targets = {CANON, *[w.replace(" ", "") for w in wake_words if w.replace(" ", "") not in _GENERIC]}
     norm_targets = {_norm(x) for x in targets}
     hit = None
     for i, tok in enumerate(toks[:6]):
@@ -67,7 +75,12 @@ def find_wake_word(text: str, wake_words: list[str]) -> tuple[bool, str]:
 
 def is_yes(text: str) -> bool:
     t = set(_tokens(text)) | {" ".join(_tokens(text))}
-    return bool(t & YES) and not is_no(text)
+    return (bool(t & YES) or bool(_YES_PHRASES.search(text))) and not is_no(text)
+
+
+def implies_consent(text: str) -> bool:
+    """True when the person already asked Sonku to remember their face ("please remember my face")."""
+    return bool(_CONSENT.search(text)) and not is_no(text)
 
 
 def is_no(text: str) -> bool:
@@ -92,7 +105,11 @@ def extract_name(text: str) -> str | None:
     for pat in _NAME_PATTERNS:
         m = pat.search(text)
         if m:
-            words = [w for w in m.group(1).split() if w.lower() not in _NAME_STOP]
+            words = []
+            for w in m.group(1).split():  # stop at the first filler word: "Dheeraj and can you..." -> Dheeraj
+                if w.lower() in _NAME_STOP:
+                    break
+                words.append(w)
             if words:
                 return " ".join(w.capitalize() for w in words[:2])
     toks = _PUNCT.sub(" ", text).split()
