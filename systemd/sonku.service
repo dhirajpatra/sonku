@@ -5,16 +5,13 @@ Wants=network-online.target ollama.service
 
 [Service]
 Type=simple
-User=@USER@
+User=dhirajpatra
 SupplementaryGroups=audio video
-WorkingDirectory=@APP_DIR@
-EnvironmentFile=@APP_DIR@/.env
+WorkingDirectory=/home/dhirajpatra/sonku
 Environment=PYTHONUNBUFFERED=1
 Environment=JACK_NO_START_SERVER=1
-# PipeWire/PulseAudio live in the user's session; without this the service cannot see Bluetooth or USB audio
-# Environment=XDG_RUNTIME_DIR=/run/user/1000
-Environment=XDG_RUNTIME_DIR=/run/user/@UID@
-ExecStart=@VENV@/bin/python -m app
+Environment=XDG_RUNTIME_DIR=/run/user/$(id -u)
+ExecStart=/home/dhirajpatra/robot_env/bin/python -m app
 Restart=always
 RestartSec=5
 TimeoutStopSec=20
