@@ -15,3 +15,4 @@ spacy>=3.6
 safetensors
 sentencepiece>=0.2.0
 transformers>=4.33
+misaki
