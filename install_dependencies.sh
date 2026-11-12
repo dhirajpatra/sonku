@@ -52,6 +52,8 @@ sudo systemctl disable --now tabletop-robot.service
 # 3. Reload systemd, enable on boot, start
 sudo loginctl enable-linger dhirajpatra
 bluetoothctl trust 30:63:71:04:38:BB # for BT mic speaker
+pactl list sinks short
+pactl list sources short
 sudo systemctl daemon-reload && sudo systemctl restart sonku.service
 sudo systemctl enable --now sonku.service
 
