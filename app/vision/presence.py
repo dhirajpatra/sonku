@@ -45,6 +45,7 @@ class PresenceWatcher(threading.Thread):
         self._gallery_ver = -1
         self._votes: list[int | None] = []
         self._last_vote_ts = 0.0
+        self._last_learn: dict[int, float] = {}
         self.last_jpeg: bytes | None = None
 
     # -- public -----------------------------------------------------------------
@@ -54,7 +55,7 @@ class PresenceWatcher(threading.Thread):
 
     def reset_identity(self) -> None:
         with self._plock:
-            self._p = Presence(seq=self._p.seq)
+            self._p = Presence(seq=self._p.seq, last_face_ts=self._p.last_face_ts)
             self._votes.clear()
 
     def stop(self) -> None:
@@ -104,7 +105,7 @@ class PresenceWatcher(threading.Thread):
                 p.face_present = False
                 if p.status != "none" and now - p.last_face_ts > self.s.absence_sec:
                     log.info("person left (%s)", p.name or p.status)
-                    self._p = Presence(seq=p.seq)
+                    self._p = Presence(seq=p.seq, last_face_ts=p.last_face_ts)  # keep it: sessions measure absence from here
                     self._votes.clear()
                 self._publish(frame, rows, label)
                 return
@@ -126,6 +127,8 @@ class PresenceWatcher(threading.Thread):
         pid, score = self.faces.match(emb, self._gallery)
         self._last_vote_ts = now
         self._votes = (self._votes + [pid])[-4:]
+        learn_pid: int | None = None
+        newly_known: int | None = None
         with self._plock:
             p = self._p
             last2 = self._votes[-2:]
@@ -133,27 +136,45 @@ class PresenceWatcher(threading.Thread):
                 if len(last2) == 2 and last2[0] == last2[1] and last2[0] != p.person_id:
                     log.info("identity changed (%s -> %s)", p.person_id, last2[0])
                     p.status, p.person_id, p.name = "checking", None, None
+                elif pid == p.person_id:
+                    p.score = score
+                    learn_pid = pid
                 else:
-                    p.score = score if pid == p.person_id else p.score
-                    return
-            if len(last2) == 2 and last2[0] is not None and last2[0] == last2[1]:
-                person = self.store.get_person(last2[0])
-                if person:
+                    return  # a single odd vote is ignored
+            if p.status != "known":
+                if len(last2) == 2 and last2[0] is not None and last2[0] == last2[1]:
+                    person = self.store.get_person(last2[0])
+                    if not person:
+                        return
                     p.status, p.person_id, p.name, p.score = "known", person["id"], person["name"], score
                     p.seq += 1
                     self.store.touch_seen(person["id"])
                     log.info("recognised %s (score %.2f)", person["name"], score)
-                    known_pid = person["id"]
+                    newly_known = learn_pid = person["id"]
+                elif len(self._votes) >= 4 and all(v is None for v in self._votes):
+                    if p.status != "unknown":
+                        log.info("unknown person (best score %.2f)", score)
+                    p.status, p.person_id, p.name, p.score = "unknown", None, None, score
+                    return
                 else:
                     return
-            elif len(self._votes) >= 4 and all(v is None for v in self._votes):
-                if p.status != "unknown":
-                    log.info("unknown person (best score %.2f)", score)
-                p.status, p.person_id, p.name, p.score = "unknown", None, None, score
-                return
-            else:
-                return
-        self._refresh_template(known_pid, emb, score)
+        if newly_known is not None:
+            self._refresh_template(newly_known, emb, score)
+        if learn_pid is not None:
+            self._learn_template(learn_pid, emb, score, now)
+
+    def _learn_template(self, pid: int, emb: np.ndarray, score: float, now: float) -> None:
+        """Learn new looks (angle, light, glasses): store a template when the match is real but not strong,
+        at most one every 5 minutes and never beyond FACES_PER_PERSON."""
+        if not (self.s.face_match_threshold + 0.05 <= score < 0.6):
+            return
+        if now - self._last_learn.get(pid, 0.0) < 300:
+            return
+        if self.store.face_count(pid) >= self.s.faces_per_person:
+            return
+        self.store.add_face(pid, emb)
+        self._last_learn[pid] = now
+        log.info("learned a new look for person %s (score %.2f)", pid, score)
 
     def _refresh_template(self, pid: int, emb: np.ndarray, score: float) -> None:
         """Monthly overwrite: once the newest template is old enough, add a fresh one and drop the oldest."""

@@ -148,6 +148,9 @@ class MemoryStore:
         rows = self._all("SELECT person_id, embedding FROM faces")
         return [(r["person_id"], np.frombuffer(r["embedding"], dtype=np.float32).copy()) for r in rows]
 
+    def face_count(self, pid: int) -> int:
+        return self._one("SELECT COUNT(*) AS n FROM faces WHERE person_id=?", (pid,))["n"]
+
     def newest_face_ts(self, pid: int) -> float | None:
         r = self._one("SELECT MAX(created_at) AS t FROM faces WHERE person_id=?", (pid,))
         return r["t"] if r else None
@@ -191,6 +194,18 @@ class MemoryStore:
         if person_id is None:
             return self._one("SELECT COUNT(*) AS n FROM interactions")["n"]
         return self._one("SELECT COUNT(*) AS n FROM interactions WHERE person_id=?", (person_id,))["n"]
+
+    def recent_interactions(self, person_id: int, n: int) -> list[dict]:
+        """The newest `n` rows for a person, oldest first (used to resume a conversation)."""
+        return self._all(
+            "SELECT * FROM (SELECT * FROM interactions WHERE person_id=? ORDER BY id DESC LIMIT ?) ORDER BY id ASC",
+            (person_id, n),
+        )
+
+    def people_over(self, n: int) -> list[int]:
+        """People with at least `n` stored rows (time for a fresh summary)."""
+        return [r["person_id"] for r in self._all(
+            "SELECT person_id FROM interactions WHERE person_id IS NOT NULL GROUP BY person_id HAVING COUNT(*) >= ?", (n,))]
 
     def older_interactions(self, person_id: int, keep_recent: int) -> list[dict]:
         """Everything except the newest `keep_recent` rows, oldest first."""

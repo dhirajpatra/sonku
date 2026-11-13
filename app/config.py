@@ -119,6 +119,7 @@ class Settings:
     greeting_enabled: bool
     greet_cooldown_min: float
     session_timeout_sec: int
+    session_absent_sec: int
     require_face_consent: bool
     # memory
     data_dir: Path
@@ -127,6 +128,8 @@ class Settings:
     compression_threshold_mb: int
     check_interval_sec: int
     summary_keep_recent: int
+    summary_every_turns: int
+    resume_turns: int
     # web / misc
     web_host: str
     web_port: int
@@ -152,9 +155,9 @@ class Settings:
             meta_api_url=_s("META_API_URL", "https://api.meta.ai/v1/responses"),
             meta_model=_s("META_MODEL", "muse-spark-1.3-contributor"),
             meta_connect_timeout=_f("META_CONNECT_TIMEOUT", 4.0),
-            meta_read_timeout=_f("FALLBACK_TIMEOUT", 10.0),
+            meta_read_timeout=_f("FALLBACK_TIMEOUT", 25.0),
             meta_cooldown_sec=_i("META_COOLDOWN_SEC", 60),
-            max_output_tokens=_i("MAX_OUTPUT_TOKENS", 500),
+            max_output_tokens=_i("MAX_OUTPUT_TOKENS", 700),
             meta_reasoning_effort=_s("META_REASONING_EFFORT", "low").lower(),
             ollama_base_url=base.rstrip("/"),
             ollama_model=_s("OLLAMA_MODEL", "qwen3.5:2b-q4_K_M"),
@@ -190,12 +193,13 @@ class Settings:
             face_match_threshold=_f("FACE_MATCH_THRESHOLD", 0.363),
             face_refresh_days=_i("FACE_REFRESH_DAYS", 30),
             face_max_age_days=_i("FACE_MAX_AGE_DAYS", 90),
-            faces_per_person=_i("FACES_PER_PERSON", 3),
+            faces_per_person=_i("FACES_PER_PERSON", 6),
             models_dir=_p("MODELS_DIR", "models"),
             wake_words=_s("WAKE_WORDS", "sonku"),
             greeting_enabled=_b("GREETING_ENABLED", True),
             greet_cooldown_min=_f("GREET_COOLDOWN_MIN", 10.0),
-            session_timeout_sec=_i("SESSION_TIMEOUT_SEC", 45),
+            session_timeout_sec=_i("SESSION_TIMEOUT_SEC", 120),
+            session_absent_sec=_i("SESSION_ABSENT_SEC", 45),
             require_face_consent=_b("REQUIRE_FACE_CONSENT", True),
             data_dir=data_dir,
             db_path=_p("DB_PATH", str(data_dir / "sonku.db")),
@@ -203,6 +207,8 @@ class Settings:
             compression_threshold_mb=_i("COMPRESSION_THRESHOLD_MB", 50),
             check_interval_sec=_i("CHECK_INTERVAL_SEC", 600),
             summary_keep_recent=_i("SUMMARY_KEEP_RECENT", 10),
+            summary_every_turns=_i("SUMMARY_EVERY_TURNS", 20),
+            resume_turns=_i("RESUME_TURNS", 6),
             web_host=_s("WEB_HOST", "0.0.0.0"),
             web_port=_i("WEB_PORT", 8000),
             admin_user=_s("ADMIN_USER", "admin"),

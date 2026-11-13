@@ -72,6 +72,16 @@ class LLMRouter:
         except OllamaError as exc:
             raise LLMUnavailable(str(exc)) from exc
 
+    def summarize(self, prompt: str, max_tokens: int = 300) -> str:
+        """Notes are written only now and then, so use the best model (Meta) and fall back to local Ollama."""
+        if self._meta_allowed():
+            try:
+                return clean_for_tts(self.meta.complete(
+                    "You write short factual notes about a person from conversation logs. Plain text only.", [], prompt))
+            except MetaError as exc:
+                self._meta_failed(exc)
+        return self.complete_local(prompt, max_tokens=max_tokens)
+
     def warm_async(self) -> None:
         threading.Thread(target=self.ollama.warm, daemon=True, name="ollama-warm").start()
 

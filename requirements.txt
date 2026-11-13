@@ -11,11 +11,3 @@ opencv-python-headless>=4.8,<4.11
 sounddevice>=0.4.6
 SpeechRecognition>=3.10
 gTTS>=2.5
-spacy>=3.6
-safetensors
-sentencepiece>=0.2.0
-transformers>=4.33
-misaki
-num2words
-phonemizer
-soundfile

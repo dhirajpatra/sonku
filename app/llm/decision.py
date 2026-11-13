@@ -9,6 +9,7 @@ from app.core import intents
 from app.llm.ollama_client import OllamaClient, OllamaError
 
 log = logging.getLogger("sonku.decision")
+_WEAK = re.compile(r"\b(this|that|these|those|here|there|it)\b", re.I)
 _ASCII_WORD = re.compile(r"^[A-Za-z][A-Za-z'\- ]{0,28}$")
 
 
@@ -20,7 +21,9 @@ class Decision:
         """Only attach a camera frame when the question is about what Sonku can see (saves seconds and bandwidth)."""
         if intents.vision_hint(text):
             return True
-        if not self.s.decision_use_llm or len(text.split()) < 3:
+        words = len(text.split())
+        # The small model costs seconds on a Pi: ask it only when the sentence points at something ("is that ok?")
+        if not self.s.decision_use_llm or not 3 <= words <= 25 or not _WEAK.search(text):
             return False
         prompt = ("Does answering this request require looking through a camera at the room or an object? "
                   f'Answer only YES or NO.\nRequest: "{text}"')

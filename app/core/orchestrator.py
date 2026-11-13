@@ -91,7 +91,30 @@ class Orchestrator(threading.Thread):
     def _end_session(self, reason: str = "") -> None:
         if self.session:
             log.info("session ended (%s)", reason or "done")
+            maint = getattr(self.rt, "maint", None)
+            if maint and self.session.person_id:
+                maint.kick()  # write a fresh summary soon if this person has enough new turns
         self.session = None
+
+    def _resume_history(self, pid: int) -> list:
+        """Earlier turns with this person, so a new conversation continues where the last one stopped."""
+        if self.s.resume_turns <= 0:
+            return []
+        hist: list = []
+        for r in self.rt.store.recent_interactions(pid, self.s.resume_turns):
+            hist += [("user", r["user_text"]), ("assistant", r["robot_text"])]
+        return hist
+
+    def _new_session(self, person: dict) -> Session:
+        return Session(person_id=person["id"], name=person["name"], lang=person["language"],
+                       history=self._resume_history(person["id"]))
+
+    def _known_person_nearby(self) -> dict | None:
+        w = self.rt.watcher
+        p = w.snapshot() if w else None
+        if p and p.status == "known" and p.face_present:
+            return self.rt.store.get_person(p.person_id)
+        return None
 
     def _check_session_expiry(self) -> None:
         sess = self.session
@@ -105,7 +128,7 @@ class Orchestrator(threading.Thread):
         w = self.rt.watcher
         if w and sess.person_id:
             p = w.snapshot()
-            if p.status == "none" and now - p.last_face_ts > self.s.absence_sec + 5:
+            if p.status == "none" and now - p.last_face_ts > self.s.session_absent_sec:
                 self._end_session("person left")
 
     def _maybe_greet(self) -> None:
@@ -122,9 +145,16 @@ class Orchestrator(threading.Thread):
             person = self.rt.store.get_person(p.person_id)
             if not person:
                 return
+            if self.session and self.session.person_id is None and self.session.stage == "chat":
+                # a conversation started with the wake word before the face was recognised carries on as this person
+                self.session.person_id, self.session.name = person["id"], person["name"]
+                if not self.session.history:
+                    self.session.history = self._resume_history(person["id"])
+                log.info("conversation continues with %s", person["name"])
+                return
             if self.session:
                 self._end_session("another person arrived")
-            self.session = Session(person_id=person["id"], name=person["name"], lang=person["language"])
+            self.session = self._new_session(person)
             recently = person["last_greeted"] and time.time() - person["last_greeted"] < self.s.greet_cooldown_min * 60
             if self.s.greeting_enabled and not recently:
                 self.rt.store.mark_greeted(person["id"])
@@ -137,7 +167,7 @@ class Orchestrator(threading.Thread):
         if p and p.status == "known":
             person = self.rt.store.get_person(p.person_id)
             if person:
-                self.session = Session(person_id=person["id"], name=person["name"], lang=person["language"])
+                self.session = self._new_session(person)
                 return
         can_enroll = bool(p and p.face_present and p.status in ("unknown", "checking") and self.rt.faces)
         self.session = Session(can_enroll=can_enroll)
@@ -147,9 +177,15 @@ class Orchestrator(threading.Thread):
         with self._turn_lock:
             if self.session is None:
                 heard, rest = intents.find_wake_word(text, self.s.wake_word_list)
-                if not heard:
-                    return None
-                self._open_session_from_wake()
+                if heard:
+                    self._open_session_from_wake()
+                else:
+                    person = self._known_person_nearby()
+                    if not person:
+                        return None  # nobody known in front of the robot: only the wake word starts a conversation
+                    self.session = self._new_session(person)
+                    rest = text
+                    log.info("conversation resumed with %s (known face, no wake word)", person["name"])
                 sess = self.session
                 if not rest:
                     if sess.can_enroll:
@@ -264,8 +300,10 @@ class Orchestrator(threading.Thread):
         t0 = time.time()
         self.state = "thinking"
         image = None
+        t_dec = time.time()
         if self.rt.camera and self.rt.decision.needs_vision(text):
             image = self.rt.camera.jpeg_b64()
+        decision_ms = int((time.time() - t_dec) * 1000)
         summary = ""
         if sess.person_id:
             person = self.rt.store.get_person(sess.person_id)
@@ -293,6 +331,7 @@ class Orchestrator(threading.Thread):
         first_audio = self.rt.tts.first_audio_ts if (speak and self.rt.tts) else 0.0
         self.metrics = {
             "stt_ms": stt_ms,
+            "decision_ms": decision_ms,
             "llm_first_sentence_ms": int((marks["first"] - t0) * 1000) if "first" in marks else None,
             "first_audio_ms": int((first_audio - t0) * 1000) if first_audio else None,
             "total_ms": total,
