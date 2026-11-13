@@ -12,7 +12,7 @@ Environment=PYTHONUNBUFFERED=1
 Environment=JACK_NO_START_SERVER=1
 # PipeWire/PulseAudio live in the user's session; without this the service cannot see Bluetooth or USB audio
 Environment=XDG_RUNTIME_DIR=/run/user/1000
-ExecStart=/home/dhirajpatra/sonku/robot_env/bin/python -m app
+ExecStart=/home/dhirajpatra/robot_env/bin/python -m app
 Restart=always
 RestartSec=5
 TimeoutStopSec=20
