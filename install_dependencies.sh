@@ -57,6 +57,9 @@ pactl list sources short
 sudo systemctl daemon-reload && sudo systemctl restart sonku.service
 sudo systemctl enable --now sonku.service
 
+systemctl is-enabled sonku.service && loginctl show-user dhirajpatra -p Linger
+
+
 # 4. Check it
 systemctl status sonku.service --no-pager
 journalctl -u sonku.service -n 40 --no-pager
