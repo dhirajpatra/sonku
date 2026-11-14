@@ -35,9 +35,9 @@ class Presence:
 
 
 class PresenceWatcher(threading.Thread):
-    def __init__(self, s: Settings, camera: Camera, faces: FaceEngine, store: MemoryStore):
+    def __init__(self, s: Settings, camera: Camera, faces: FaceEngine, store: MemoryStore, cache=None):
         super().__init__(daemon=True, name="presence")
-        self.s, self.camera, self.faces, self.store = s, camera, faces, store
+        self.s, self.camera, self.faces, self.store, self.cache = s, camera, faces, store, cache
         self._p = Presence()
         self._plock = threading.Lock()
         self._stop_evt = threading.Event()
@@ -124,7 +124,9 @@ class PresenceWatcher(threading.Thread):
     def _vote(self, frame: np.ndarray, row: np.ndarray, now: float) -> None:
         self._reload_gallery()
         emb = self.faces.embed(frame, row)
-        pid, score = self.faces.match(emb, self._gallery)
+        pid, score = self.cache.match(emb) if self.cache else (None, -1.0)  # hot people first
+        if pid is None:
+            pid, score = self.faces.match(emb, self._gallery)
         self._last_vote_ts = now
         self._votes = (self._votes + [pid])[-4:]
         learn_pid: int | None = None

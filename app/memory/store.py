@@ -73,6 +73,18 @@ class MemoryStore:
         self._db.executescript(SCHEMA)
         self._db.commit()
         self.gallery_version = 0  # bumped whenever face templates change
+        self._listeners: list = []
+
+    # -- change notifications (the person cache listens) -------------------------
+    def add_listener(self, fn) -> None:
+        self._listeners.append(fn)
+
+    def _emit(self, event: str, pid: int | None = None) -> None:
+        for fn in self._listeners:
+            try:
+                fn(event, pid)
+            except Exception:  # a broken listener must never break a database write
+                pass
 
     # -- helpers ----------------------------------------------------------------
     def _run(self, sql: str, args: Iterable = ()) -> sqlite3.Cursor:
@@ -111,13 +123,17 @@ class MemoryStore:
         )
 
     def rename_person(self, pid: int, name: str) -> bool:
-        return self._run("UPDATE people SET name=? WHERE id=?", (name.strip(), pid)).rowcount > 0
+        ok = self._run("UPDATE people SET name=? WHERE id=?", (name.strip(), pid)).rowcount > 0
+        self._emit("person", pid)
+        return ok
 
     def set_language(self, pid: int, lang: str) -> None:
         self._run("UPDATE people SET language=? WHERE id=?", (lang, pid))
+        self._emit("person", pid)
 
     def set_summary(self, pid: int, summary: str) -> None:
         self._run("UPDATE people SET summary=? WHERE id=?", (summary, pid))
+        self._emit("person", pid)
 
     def touch_seen(self, pid: int) -> None:
         self._run("UPDATE people SET last_seen=? WHERE id=?", (time.time(), pid))
@@ -128,12 +144,14 @@ class MemoryStore:
     def delete_person(self, pid: int) -> bool:
         ok = self._run("DELETE FROM people WHERE id=?", (pid,)).rowcount > 0  # cascades to faces + interactions
         self.gallery_version += 1
+        self._emit("delete", pid)
         return ok
 
     def delete_all_people(self) -> int:
         n = self._run("DELETE FROM people").rowcount
         self._run("DELETE FROM interactions")
         self.gallery_version += 1
+        self._emit("delete", None)
         return n
 
     # -- faces ------------------------------------------------------------------
@@ -143,10 +161,18 @@ class MemoryStore:
             (pid, np.asarray(emb, dtype=np.float32).tobytes(), time.time()),
         )
         self.gallery_version += 1
+        self._emit("faces", pid)
 
     def gallery(self) -> list[tuple[int, np.ndarray]]:
         rows = self._all("SELECT person_id, embedding FROM faces")
         return [(r["person_id"], np.frombuffer(r["embedding"], dtype=np.float32).copy()) for r in rows]
+
+    def faces_for(self, pid: int) -> list[np.ndarray]:
+        rows = self._all("SELECT embedding FROM faces WHERE person_id=? ORDER BY id", (pid,))
+        return [np.frombuffer(r["embedding"], dtype=np.float32).copy() for r in rows]
+
+    def recent_people(self, n: int) -> list[dict]:
+        return self._all("SELECT id, name FROM people ORDER BY COALESCE(last_seen, created_at) DESC LIMIT ?", (n,))
 
     def face_count(self, pid: int) -> int:
         return self._one("SELECT COUNT(*) AS n FROM faces WHERE person_id=?", (pid,))["n"]
@@ -164,6 +190,7 @@ class MemoryStore:
         ).rowcount
         if n:
             self.gallery_version += 1
+            self._emit("faces", pid)
         return n
 
     def purge_old_faces(self, max_age_days: int) -> int:
@@ -172,6 +199,7 @@ class MemoryStore:
         n = self._run("DELETE FROM faces WHERE created_at < ?", (time.time() - max_age_days * 86400,)).rowcount
         if n:
             self.gallery_version += 1
+            self._emit("faces", None)
         return n
 
     # -- interactions -----------------------------------------------------------
@@ -181,6 +209,7 @@ class MemoryStore:
             "VALUES(?,?,?,?,?,?,?,?)",
             (person_id, time.time(), lang, user_text, robot_text, backend, int(latency_ms), int(bool(visual))),
         )
+        self._emit("interaction", person_id)
 
     def list_interactions(self, limit: int = 100, person_id: int | None = None) -> list[dict]:
         where, args = ("WHERE i.person_id=?", [person_id]) if person_id is not None else ("", [])
@@ -220,14 +249,20 @@ class MemoryStore:
             with self._lock:
                 self._db.executemany("DELETE FROM interactions WHERE id=?", [(i,) for i in ids])
                 self._db.commit()
+            self._emit("interaction", None)
 
     def clear_interactions(self, person_id: int | None = None) -> int:
         if person_id is None:
-            return self._run("DELETE FROM interactions").rowcount
-        return self._run("DELETE FROM interactions WHERE person_id=?", (person_id,)).rowcount
+            n = self._run("DELETE FROM interactions").rowcount
+        else:
+            n = self._run("DELETE FROM interactions WHERE person_id=?", (person_id,)).rowcount
+        self._emit("interaction", person_id)
+        return n
 
     def prune_oldest_interactions(self, n: int) -> int:
-        return self._run("DELETE FROM interactions WHERE id IN (SELECT id FROM interactions ORDER BY id ASC LIMIT ?)", (n,)).rowcount
+        removed = self._run("DELETE FROM interactions WHERE id IN (SELECT id FROM interactions ORDER BY id ASC LIMIT ?)", (n,)).rowcount
+        self._emit("interaction", None)
+        return removed
 
     def people_with_interactions(self) -> list[int]:
         return [r["person_id"] for r in self._all("SELECT DISTINCT person_id FROM interactions WHERE person_id IS NOT NULL")]

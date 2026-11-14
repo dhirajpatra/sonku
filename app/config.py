@@ -40,6 +40,11 @@ def _b(key: str, default: bool) -> bool:
     return _s(key, "true" if default else "false").lower() in ("1", "true", "yes", "on")
 
 
+def _effort() -> str:
+    v = _s("META_REASONING_EFFORT", "low").lower()
+    return v if v in ("minimal", "low", "medium", "high", "xhigh") else "low"  # Muse reasoning is always on
+
+
 def _p(key: str, default: str) -> Path:
     p = Path(os.path.expanduser(_s(key, default)))
     return p if p.is_absolute() else BASE_DIR / p
@@ -76,6 +81,7 @@ class Settings:
     meta_cooldown_sec: int
     max_output_tokens: int
     meta_reasoning_effort: str
+    meta_structured: bool
     ollama_base_url: str
     ollama_model: str
     decision_model: str
@@ -101,11 +107,13 @@ class Settings:
     vad_min_rms: float
     vad_silence_sec: float
     max_utterance_sec: float
+    patience_sec: float
     # vision
     camera_backend: str
     camera_width: int
     camera_height: int
     camera_rotate_180: bool
+    vision_max_side: int
     presence_interval_sec: float
     absence_sec: float
     face_min_width_px: int
@@ -130,6 +138,7 @@ class Settings:
     summary_keep_recent: int
     summary_every_turns: int
     resume_turns: int
+    person_cache_size: int
     # web / misc
     web_host: str
     web_port: int
@@ -157,15 +166,16 @@ class Settings:
             meta_connect_timeout=_f("META_CONNECT_TIMEOUT", 4.0),
             meta_read_timeout=_f("FALLBACK_TIMEOUT", 25.0),
             meta_cooldown_sec=_i("META_COOLDOWN_SEC", 60),
-            max_output_tokens=_i("MAX_OUTPUT_TOKENS", 700),
-            meta_reasoning_effort=_s("META_REASONING_EFFORT", "low").lower(),
+            max_output_tokens=_i("MAX_OUTPUT_TOKENS", 1500),
+            meta_reasoning_effort=_effort(),
+            meta_structured=_b("META_STRUCTURED_INPUT", True),
             ollama_base_url=base.rstrip("/"),
             ollama_model=_s("OLLAMA_MODEL", "qwen3.5:2b-q4_K_M"),
             decision_model=_s("DECISION_MODEL", "qwen3.5:0.8b"),
             decision_use_llm=_b("DECISION_USE_LLM", True),
             ollama_keep_alive=_s("OLLAMA_KEEP_ALIVE", "30m"),
             ollama_num_ctx=_i("OLLAMA_NUM_CTX", 2048),
-            ollama_num_predict=_i("OLLAMA_NUM_PREDICT", 128),
+            ollama_num_predict=_i("OLLAMA_NUM_PREDICT", 400),
             ollama_vision=_b("OLLAMA_VISION", True),
             history_turns=_i("HISTORY_TURNS", 6),
             stt_backend=_s("STT_BACKEND", "google").lower(),
@@ -182,11 +192,13 @@ class Settings:
             audio_priority=_s("AUDIO_PRIORITY", "bluetooth,usb,other").lower().replace(" ", ""),
             vad_min_rms=_f("VAD_MIN_RMS", 350.0),
             vad_silence_sec=_f("VAD_SILENCE_SEC", 0.9),
-            max_utterance_sec=_f("MAX_UTTERANCE_SEC", 12.0),
+            max_utterance_sec=_f("MAX_UTTERANCE_SEC", 30.0),
+            patience_sec=_f("PATIENCE_SEC", 8.0),
             camera_backend=_s("CAMERA_BACKEND", "auto").lower(),
             camera_width=_i("CAMERA_WIDTH", 640),
             camera_height=_i("CAMERA_HEIGHT", 480),
             camera_rotate_180=_b("CAMERA_ROTATE_180", True),
+            vision_max_side=_i("VISION_MAX_SIDE", 1024),
             presence_interval_sec=_f("PRESENCE_INTERVAL_SEC", 0.7),
             absence_sec=_f("ABSENCE_SEC", 8.0),
             face_min_width_px=_i("FACE_MIN_WIDTH_PX", 70),
@@ -209,6 +221,7 @@ class Settings:
             summary_keep_recent=_i("SUMMARY_KEEP_RECENT", 10),
             summary_every_turns=_i("SUMMARY_EVERY_TURNS", 20),
             resume_turns=_i("RESUME_TURNS", 6),
+            person_cache_size=_i("PERSON_CACHE_SIZE", 5),
             web_host=_s("WEB_HOST", "0.0.0.0"),
             web_port=_i("WEB_PORT", 8000),
             admin_user=_s("ADMIN_USER", "admin"),

@@ -38,6 +38,23 @@ _CONSENT = re.compile(
     r"|\b(take|taking)\b.{0,20}\b(photo|photos|picture|face)\b", re.I)
 
 
+_HOLD_ON = re.compile(r"\b(wait|hold on|hang on|one (second|moment|sec)|just a (second|moment|sec)|give me a (second|moment)|"
+                      r"let me (think|see|remember))\W*$", re.I)
+# Words a finished sentence rarely ends on. ("so" is left out: "I don't think so.")
+_TRAILING = {"and", "or", "but", "because", "cause", "then", "if", "when", "while", "that", "which", "who", "whose",
+             "to", "of", "for", "with", "in", "on", "at", "about", "from", "into", "the", "a", "an", "my", "your", "his",
+             "her", "our", "their", "is", "are", "was", "were", "am", "i", "um", "uh", "umm", "hmm", "also", "plus", "as",
+             "और", "लेकिन", "क्योंकि", "कि", "का", "की", "के", "में", "से", "को", "पर"}
+
+
+def looks_incomplete(text: str) -> bool:
+    """True when the person probably paused mid-sentence ("... and", "wait, let me think")."""
+    toks = _tokens(text)
+    if not toks:
+        return False
+    return bool(_HOLD_ON.search(text.strip())) or toks[-1] in _TRAILING
+
+
 def _tokens(text: str) -> list[str]:
     return _PUNCT.sub(" ", text.lower()).split()
 

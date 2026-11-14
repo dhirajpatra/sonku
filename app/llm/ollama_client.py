@@ -47,6 +47,7 @@ class OllamaClient:
     def stream(self, system: str, history, user_text: str, image_b64: str | None = None) -> Iterator[str]:
         payload = self._payload(self.s.ollama_model, self._messages(system, history, user_text, image_b64), True, self.s.ollama_num_predict)
         chunker = SentenceChunker()
+        truncated, yielded = False, 0
         try:
             with self.http.post(f"{self.s.ollama_base_url}/api/chat", json=payload, stream=True, timeout=(3, 60)) as r:
                 if r.status_code != 200:
@@ -58,11 +59,16 @@ class OllamaClient:
                     if obj.get("error"):
                         raise OllamaError(obj["error"])
                     for sent in chunker.feed(obj.get("message", {}).get("content", "")):
+                        yielded += 1
                         yield clean_for_tts(sent)
                     if obj.get("done"):
+                        truncated = obj.get("done_reason") == "length"
                         break
         except (requests.RequestException, json.JSONDecodeError) as exc:
             raise OllamaError(str(exc)) from exc
+        if truncated and yielded:
+            log.warning("Ollama reply hit OLLAMA_NUM_PREDICT (%d); dropped the unfinished last sentence", self.s.ollama_num_predict)
+            return
         for sent in chunker.flush():
             yield clean_for_tts(sent)
 

@@ -18,7 +18,7 @@ from typing import Iterable
 from app.audio.devices import AudioRouter
 from app.config import Settings
 from app.utils.lang import MITHI_LANGS, normalize_lang
-from app.utils.text import clean_for_tts
+from app.utils.text import clean_for_tts, split_long
 
 log = logging.getLogger("sonku.tts")
 _DONE = object()
@@ -114,12 +114,13 @@ class TTS:
         try:
             for sentence in sentences:
                 spoken.append(sentence)
-                path = self._synth(sentence, lang)
-                if path:
-                    q.put(path)
+                for piece in split_long(sentence):  # keep each synthesis call short
+                    path = self._synth(piece, lang)
+                    if path:
+                        q.put(path)
         finally:
             q.put(_DONE)
-            t.join(timeout=120)
+            t.join(timeout=600)
         log.info("[Sonku %s]: %s", lang, " ".join(spoken))
         time.sleep(0.3)  # let the DAC settle before the microphone reopens
         return " ".join(spoken)

@@ -16,6 +16,7 @@ from app.core.orchestrator import Orchestrator
 from app.llm.decision import Decision
 from app.llm.router import LLMRouter
 from app.logging_setup import RING
+from app.memory.cache import PersonCache
 from app.memory.store import MemoryStore
 from app.vision.camera import Camera
 from app.vision.faces import FaceEngine
@@ -30,6 +31,7 @@ class Runtime:
         self.started = time.time()
         self.health: dict[str, str] = {}
         self.store = MemoryStore(s)
+        self.cache = PersonCache(self.store, s)
         self.router = LLMRouter(s)
         self.decision = Decision(s, self.router.ollama)
         self.audio = AudioRouter(s)
@@ -90,11 +92,12 @@ class Runtime:
 
             if self._try("camera", init_vision):
                 self.camera, self.faces = camera, faces
-                self.watcher = PresenceWatcher(self.s, camera, faces, self.store)
+                self.watcher = PresenceWatcher(self.s, camera, faces, self.store, self.cache)
                 self.watcher.start()
             elif camera.backend:  # camera works but face models are missing: still allow "what do you see?"
                 self.camera = camera
 
+        self.cache.warm()
         self.router.warm_async()
         self.orch.start()
         self.maint.start()
@@ -124,6 +127,7 @@ class Runtime:
                 "face_present": w.face_present, "status": w.status, "name": w.name, "score": round(w.score, 3)},
             "llm": self.router.status(),
             "memory": self.store.usage(),
+            "cache": self.cache.stats(),
             "memory_alert": self.maint.alert,
             "log_errors": sum(1 for r in RING.buf if r["level"] in ("ERROR", "CRITICAL")),
         }

@@ -50,3 +50,36 @@ class SentenceChunker:
 def split_sentences(text: str) -> list[str]:
     c = SentenceChunker()
     return c.feed(text + " ") + c.flush()
+
+
+_FINAL = re.compile(r"""[.!?\u0964\u0965]["')\]]*$""")
+
+
+def drop_unfinished(text: str) -> str:
+    """For a reply that was cut off by a token limit: remove the trailing fragment that never reached
+    sentence-ending punctuation (keep it only if it is all there is)."""
+    text = text.strip()
+    if not text or _FINAL.search(text):
+        return text
+    sents = split_sentences(text)
+    return " ".join(sents[:-1]) if len(sents) > 1 else text
+
+
+def split_long(text: str, max_chars: int = 180) -> list[str]:
+    """Split an over-long sentence at commas/spaces so a speech model never has to swallow it whole."""
+    out: list[str] = []
+    text = text.strip()
+    while len(text) > max_chars:
+        window = text[:max_chars]
+        cut = max(window.rfind(", "), window.rfind("; "), window.rfind(": "))
+        if cut < max_chars * 0.4:
+            cut = window.rfind(" ")
+        if cut <= 0:
+            piece = text[:max_chars]
+        else:
+            piece = text[:cut + 1] if text[cut] in ",;:" else text[:cut]
+        out.append(piece.strip())
+        text = text[len(piece):].strip()
+    if text:
+        out.append(text)
+    return out

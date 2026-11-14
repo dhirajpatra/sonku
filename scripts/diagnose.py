@@ -126,7 +126,7 @@ def meta_tokens():
     """Same short question at each reasoning effort: shows what a turn really costs and how fast it is."""
     from app.llm.meta_client import MetaClient
     c = MetaClient(s)
-    for effort in ("low", "minimal", "none"):
+    for effort in ("minimal", "low", "medium"):
         s.meta_reasoning_effort = effort
         before = dict(c.totals)
         t0 = time.time()

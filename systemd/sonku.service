@@ -5,22 +5,14 @@ Wants=network-online.target ollama.service
 
 [Service]
 Type=simple
-User=dhirajpatra
+User=@USER@
 SupplementaryGroups=audio video
-WorkingDirectory=/home/dhirajpatra/sonku
+WorkingDirectory=@APP_DIR@
 Environment=PYTHONUNBUFFERED=1
 Environment=JACK_NO_START_SERVER=1
 # PipeWire/PulseAudio live in the user's session; without this the service cannot see Bluetooth or USB audio
-Environment=XDG_RUNTIME_DIR=/run/user/1000
-# PipeWire/PulseAudio live in the user's session; without this the service cannot see Bluetooth or USB audio
-Environment=XDG_RUNTIME_DIR=/run/user/1000
-Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
-# Unmute and set speaker and mic volume to 100% before starting
-ExecStartPre=-/usr/bin/wpctl set-mute @DEFAULT_SINK@ 0
-ExecStartPre=-/usr/bin/wpctl set-volume @DEFAULT_SINK@ 1.0
-ExecStartPre=-/usr/bin/wpctl set-mute @DEFAULT_SOURCE@ 0
-ExecStartPre=-/usr/bin/wpctl set-volume @DEFAULT_SOURCE@ 1.0
-ExecStart=/home/dhirajpatra/robot_env/bin/python -m app
+Environment=XDG_RUNTIME_DIR=/run/user/@UID@
+ExecStart=@VENV@/bin/python -m app
 Restart=always
 RestartSec=5
 TimeoutStopSec=20
@@ -28,4 +20,3 @@ MemoryMax=12G
 
 [Install]
 WantedBy=multi-user.target
-

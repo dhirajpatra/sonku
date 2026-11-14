@@ -79,6 +79,24 @@ shows the choice and has a *Rescan* button. `diagnose.py audio` prints the same 
   `Environment=XDG_RUNTIME_DIR=/run/user/<uid>` (`id -u`) in `sonku.service` (the template does this).
 - No sound server? Set `AUDIO_BACKEND=alsa` and use `AUDIO_INPUT_MATCH` / `AUDIO_OUTPUT_DEVICE`.
 
+## Listening, answers, models and memory
+- **Long sentences.** After a sentence that sounds unfinished (it ends on "and", "because", "the"... or "wait, let me think"),
+  Sonku keeps listening for up to `PATIENCE_SEC` (8) seconds and joins the parts into one question. A finished sentence is
+  answered after the normal short pause, so replies stay quick. `MAX_UTTERANCE_SEC` (30) caps one question. Google's free
+  recogniser may refuse very long clips; the offline `whisper_cpp` / `indic` backends do not have that limit.
+- **Full-length answers.** Casual chat stays short; explanations, plans and study questions get a complete answer. If a model
+  hits its token limit, the unfinished last sentence is dropped instead of being spoken half-way, and the log says which limit
+  to raise (`MAX_OUTPUT_TOKENS`, `OLLAMA_NUM_PREDICT`). Very long sentences are split before speech synthesis.
+- **Meta model.** `META_MODEL=muse-spark-1.3-contributor` is the same model as `muse-spark-1.3` at a deep discount, but Meta may
+  train on prompts, replies and camera frames. Use `muse-spark-1.3` if that is not acceptable. `muse-wonder-1.0` is Meta's
+  frontier model at roughly 40x the price. Reasoning is always on: `META_REASONING_EFFORT` is one of minimal, low, medium, high, xhigh.
+- **Images.** The photo goes to Meta as an `input_image` block next to the question, the rules go in a `developer` message
+  (Meta's recommended layout; it falls back to one text prompt if Meta rejects it). Frames are shrunk to `VISION_MAX_SIDE`.
+  For sharper text reading use `CAMERA_WIDTH=1280`, `CAMERA_HEIGHT=720` and double `FACE_MIN_WIDTH_PX`.
+- **Person cache.** The last `PERSON_CACHE_SIZE` people (minimum 3) are kept in memory with their face templates, a compact
+  summary and their last turns. Recognition tries them first, replies read their notes from memory, and the cache updates itself
+  whenever the database changes. The dashboard shows who is hot and the hit/miss counts.
+
 ## Troubleshooting
 | Symptom | Check |
 |---|---|

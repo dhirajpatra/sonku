@@ -95,15 +95,19 @@ class Camera:
                 log.warning("frame capture failed: %s", exc)
         return None
 
-    def jpeg(self, frame: np.ndarray | None = None, quality: int = 75) -> bytes | None:
+    def jpeg(self, frame: np.ndarray | None = None, quality: int = 75, max_side: int = 0) -> bytes | None:
         frame = self.read() if frame is None else frame
         if frame is None:
             return None
+        longest = max(frame.shape[:2])
+        if max_side and longest > max_side:  # never upscale; only shrink big frames
+            scale = max_side / longest
+            frame = cv2.resize(frame, (int(frame.shape[1] * scale), int(frame.shape[0] * scale)), interpolation=cv2.INTER_AREA)
         ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
         return buf.tobytes() if ok else None
 
-    def jpeg_b64(self, quality: int = 75) -> str | None:
-        data = self.jpeg(quality=quality)
+    def jpeg_b64(self, quality: int = 80) -> str | None:
+        data = self.jpeg(quality=quality, max_side=self.s.vision_max_side)
         return base64.b64encode(data).decode() if data else None
 
     def stop(self) -> None:

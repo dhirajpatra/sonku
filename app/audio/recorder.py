@@ -64,7 +64,7 @@ class Recorder:
     def _threshold(self) -> float:
         return max(self.s.vad_min_rms, self.noise * 3.0)
 
-    def listen(self, wait_sec: float = 2.0) -> np.ndarray | None:
+    def listen(self, wait_sec: float = 2.0, max_sec: float | None = None) -> np.ndarray | None:
         """Wait up to `wait_sec` for speech, then record until silence. Returns 16 kHz int16 or None."""
         import sounddevice as sd
 
@@ -75,7 +75,7 @@ class Recorder:
         self.last_peak = 0.0
         t_start = time.time()
         silence_blocks = int(self.s.vad_silence_sec / 0.03)
-        max_blocks = int(self.s.max_utterance_sec / 0.03)
+        max_blocks = int((max_sec or self.s.max_utterance_sec) / 0.03)
         try:
             with sd.InputStream(samplerate=self.rate, channels=1, dtype="int16", blocksize=block, device=self.device) as st:
                 while True:

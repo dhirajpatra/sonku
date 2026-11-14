@@ -12,6 +12,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 
+import numpy as np
+
 from app.config import Settings
 from app.core import intents
 from app.core.phrases import phrase, phrase_lang
@@ -77,15 +79,41 @@ class Orchestrator(threading.Thread):
         if audio is None:
             return
         self.state = "transcribing"
+        hint = self.session.lang if self.session else None
         t0 = time.time()
-        text, lang = self.rt.stt.transcribe(audio, self.session.lang if self.session else None)
+        text, lang = self.rt.stt.transcribe(audio, hint)
         stt_ms = int((time.time() - t0) * 1000)
+        total_sec = len(audio) / 16000
+        # The sentence sounds unfinished ("... and", "wait, let me think"): keep listening for the rest
+        for _ in range(3):
+            if (not text or total_sec >= self.s.max_utterance_sec - 1 or not intents.looks_incomplete(text)
+                    or not self._engaged(text)):
+                break
+            log.info("[heard so far] %s  (waiting up to %.0fs for the rest)", text, self.s.patience_sec)
+            self.state = "listening"
+            more = self.rt.recorder.listen(wait_sec=self.s.patience_sec, max_sec=self.s.max_utterance_sec - total_sec)
+            if more is None:
+                break
+            audio = np.concatenate([audio, np.zeros(int(0.3 * 16000), dtype=np.int16), more])
+            total_sec = len(audio) / 16000
+            self.state = "transcribing"
+            t1 = time.time()
+            new_text, new_lang = self.rt.stt.transcribe(audio, hint)
+            stt_ms += int((time.time() - t1) * 1000)
+            if not new_text:
+                break
+            text, lang = new_text, new_lang
         if not text:
             log.info("[mic] captured %.1fs of sound (loudest %d, threshold %d) but speech-to-text returned nothing",
                      len(audio) / 16000, self.rt.recorder.last_peak, self.rt.recorder.last_thr)
             return
         log.info("[heard %s] %s", lang, text)
         self.handle_utterance(text, lang, stt_ms=stt_ms)
+
+    def _engaged(self, text: str) -> bool:
+        """Only wait for more speech when someone is actually talking to the robot."""
+        return (self.session is not None or intents.find_wake_word(text, self.s.wake_word_list)[0]
+                or self._known_person_nearby() is not None)
 
     # ---------------------------------------------------------------- sessions
     def _end_session(self, reason: str = "") -> None:
@@ -100,10 +128,8 @@ class Orchestrator(threading.Thread):
         """Earlier turns with this person, so a new conversation continues where the last one stopped."""
         if self.s.resume_turns <= 0:
             return []
-        hist: list = []
-        for r in self.rt.store.recent_interactions(pid, self.s.resume_turns):
-            hist += [("user", r["user_text"]), ("assistant", r["robot_text"])]
-        return hist
+        entry = self.rt.cache.get(pid)  # served from memory; the cache refreshes itself after new turns
+        return list(entry.history) if entry and entry.history else []
 
     def _new_session(self, person: dict) -> Session:
         return Session(person_id=person["id"], name=person["name"], lang=person["language"],
@@ -304,11 +330,8 @@ class Orchestrator(threading.Thread):
         if self.rt.camera and self.rt.decision.needs_vision(text):
             image = self.rt.camera.jpeg_b64()
         decision_ms = int((time.time() - t_dec) * 1000)
-        summary = ""
-        if sess.person_id:
-            person = self.rt.store.get_person(sess.person_id)
-            summary = person["summary"] if person else ""
-        system = prompts.system_prompt(lang, sess.name, summary)
+        entry = self.rt.cache.get(sess.person_id)  # compact notes, no database read when the person is hot
+        system = prompts.system_prompt(lang, sess.name, entry.summary if entry else "", has_image=bool(image))
         history = list(sess.history)
         marks: dict = {}
 

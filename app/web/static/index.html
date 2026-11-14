@@ -179,7 +179,8 @@ async function refresh() {
     const m = s.memory;
     $("gauge-text").textContent = `${fmtBytes(m.data_bytes)} of ${fmtBytes(m.limit_bytes)} used (${m.percent}%)`;
     const g = $("gauge"); g.style.width = Math.max(0.5, Math.min(100, m.percent)) + "%"; g.className = m.status === "full" ? "bad" : m.status === "warning" ? "warn" : "";
-    fill("mem", [["People", m.people], ["Face templates", m.faces], ["Conversation turns", m.interactions], ["Database file", fmtBytes(m.db_bytes)]]);
+    fill("mem", [["People", m.people], ["Face templates", m.faces], ["Conversation turns", m.interactions], ["Database file", fmtBytes(m.db_bytes)],
+      ["Person cache", s.cache ? `${s.cache.size}/${s.cache.capacity} hot · ${s.cache.hits} hits · ${s.cache.misses} misses · ${s.cache.people.join(", ") || "none yet"}` : "–"]]);
     fill("health", Object.entries(s.health).map(([k, v]) => [k, v, v === "ok" || v === "headless" ? "ok" : "bad"]));
     const a = s.audio;
     fill("audio", [["Mode", a.mode === "pulse" ? "sound server (Bluetooth, USB, built-in)" : "direct ALSA"],
