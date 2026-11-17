@@ -77,7 +77,7 @@ class MetaClient:
                         return part["text"]
         return data.get("output_text") or ""
 
-    def complete(self, system: str, history, user_text: str, image_b64: str | None = None) -> str:
+    def complete(self, system: str, history, user_text: str, image_b64: str | None = None, effort: str | None = None) -> str:
         if not self.s.meta_api_key or self.s.meta_api_key.startswith("your_"):
             raise MetaError("MODEL_API_KEY is not set")
         headers = {"Authorization": f"Bearer {self.s.meta_api_key}", "Content-Type": "application/json"}
@@ -90,8 +90,10 @@ class MetaClient:
                 "max_output_tokens": self.s.max_output_tokens,
                 "stream": False,
             }
-            if self.s.meta_reasoning_effort:
-                payload["reasoning"] = {"effort": self.s.meta_reasoning_effort}
+            levels = ("minimal", "low", "medium", "high", "xhigh")
+            eff = effort if effort in levels else self.s.meta_reasoning_effort
+            if eff in levels:
+                payload["reasoning"] = {"effort": eff}
             try:
                 r = self.http.post(self.s.meta_api_url, headers=headers, json=payload,
                                    timeout=(self.s.meta_connect_timeout, self.s.meta_read_timeout))

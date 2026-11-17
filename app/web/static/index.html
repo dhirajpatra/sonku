@@ -172,7 +172,7 @@ async function refresh() {
     const r = s.robot, p = s.presence;
     fill("now", [
       ["Conversation", r.session ? `${r.session.name || "someone new"} (${r.session.lang}, ${r.session.turns} turns, idle ${r.session.idle_sec}s)` : "none open"],
-      ["Camera sees", p ? (p.face_present ? (p.name ? p.name + " (" + p.score + ")" : p.status) : "nobody") : "vision off"],
+      ["Camera sees", p ? (p.face_present ? (p.faces + " face(s): " + ((p.people || []).join(", ") || "nobody known") + (p.unknown ? ", " + p.unknown + " unknown" : "")) : "nobody") : "vision off"],
       ["Uptime", fmtDur(s.uptime_sec)], ["Version", s.version],
       ["Errors logged", String(s.log_errors), s.log_errors ? "warn" : "ok"],
     ]);

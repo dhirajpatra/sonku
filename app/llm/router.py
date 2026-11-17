@@ -42,11 +42,12 @@ class LLMRouter:
             log.warning("Meta API skipped for %ds after %d failures", self.s.meta_cooldown_sec, self._fails)
 
     # -- public -----------------------------------------------------------------
-    def reply_stream(self, system: str, history, user_text: str, image_b64: str | None = None) -> Iterator[str]:
+    def reply_stream(self, system: str, history, user_text: str, image_b64: str | None = None,
+                     effort: str | None = None) -> Iterator[str]:
         """Yield the reply one sentence at a time (so TTS can start on the first one)."""
         if self._meta_allowed():
             try:
-                text = clean_for_tts(self.meta.complete(system, history, user_text, image_b64))
+                text = clean_for_tts(self.meta.complete(system, history, user_text, image_b64, effort=effort))
                 self._fails = 0
                 self.last_backend = "meta_api"
                 yield from split_sentences(text)

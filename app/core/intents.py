@@ -5,7 +5,7 @@ import re
 from difflib import SequenceMatcher
 
 CANON = "sonku"
-# Common mis-hearings plus the name written in the Indic scripts Mithi/Indic-STT use.
+# Common mis-hearings plus the name written in the Indic scripts the Indic STT backend uses.
 ALIASES = {
     "sonko", "sanku", "sonkoo", "sunku", "sonkhu", "songku", "sonkku", "son ku", "sun ku",
     "सोनकू", "सोनकु", "सोन्कू", "সোনকু", "સોનકુ", "ಸೋನ್ಕು", "சோன்கு", "సోంకు", "സോൻകു",

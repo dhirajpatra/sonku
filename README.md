@@ -9,7 +9,7 @@ camera ─► presence watcher ─► face match (YuNet + SFace) ─┐
 mic ─► VAD ─► speech-to-text ─► orchestrator ◄────────────┘
                                    │  decision rules/0.8B model (needs camera? name?)
                                    ▼
-          Meta API ──(fail/timeout)──► Ollama qwen3.5:2b ─► sentence chunks ─► Mithi TTS ─► speaker
+          Meta API ──(fail/timeout)──► Ollama qwen3.5:2b ─► sentence chunks ─► gTTS ─► speaker
                                    │
                           SQLite memory (people, face templates, chats)  ◄── FastAPI admin panel :8000
 ```
@@ -19,7 +19,7 @@ mic ─► VAD ─► speech-to-text ─► orchestrator ◄──────�
 |---|---|
 | `app/core/` | `orchestrator.py` (conversation logic), `intents.py` (wake word, yes/no, names), `maintenance.py` (memory limit, compression) |
 | `app/vision/` | camera, face engine, presence watcher |
-| `app/audio/` | microphone + VAD, speech-to-text backends, Mithi TTS |
+| `app/audio/` | microphone + VAD, speech-to-text backends, gTTS speech |
 | `app/llm/` | Meta client, Ollama client, router with fallback, decision helper |
 | `app/memory/store.py` | SQLite storage |
 | `app/web/` | admin API (`server.py`) and page (`static/index.html`) |
@@ -60,7 +60,7 @@ Only 128-number face templates are stored — no photos, no audio.
 
 ## Speech models
 - **STT** (`STT_BACKEND`, comma-separated, tried in order): `google` (online, default), `whisper_cpp` (offline, build whisper.cpp and set `WHISPER_CPP_MODEL`), `indic` (`bodhan-ai/indic-transcribe-core`; gated model, `pip install -r requirements-indic.txt`, `hf auth login`). It is a 1.2B-parameter model: run `diagnose.py stt-bench google indic` and check the real-time factor before switching.
-- **TTS**: Mithi v1 Flash locally; English gTTS (online) only if Mithi fails to load.
+- **TTS**: Google gTTS (online; needs `sox`). English uses an Indian accent (`GTTS_TLD=co.in`); Hindi, Bengali, Tamil, Telugu, Kannada, Malayalam, Marathi, Gujarati and Punjabi are spoken in those languages where gTTS supports them, and the log says if one is missing (Odia may be).
 - The reply language follows the language you spoke. Language is detected from script, so Latin-script speech counts as English unless the Indic STT reports otherwise.
 
 ## Tuning for speed
@@ -78,6 +78,23 @@ shows the choice and has a *Rescan* button. `diagnose.py audio` prints the same 
 - The service must reach your PipeWire session: `sudo loginctl enable-linger $USER` and keep
   `Environment=XDG_RUNTIME_DIR=/run/user/<uid>` (`id -u`) in `sonku.service` (the template does this).
 - No sound server? Set `AUDIO_BACKEND=alsa` and use `AUDIO_INPUT_MATCH` / `AUDIO_OUTPUT_DEVICE`.
+
+## Behaving like a family member
+- **Everyone in view.** Every face (up to 4) is recognised each time, not just the biggest. Several known people arriving
+  together get one greeting ("Hello Asha and Ravi!"); someone who arrives later is greeted alone. The language model is told who
+  is in view, so it can talk to the right people. The dashboard shows "3 face(s): Asha, Ravi, 1 unknown".
+- **Strangers** (`UNKNOWN_FACE_MODE`, also in Settings): `ask_photo` (default) asks "May I take your photo so I can remember
+  you?", takes it on "yes", then asks the name. `capture_first` takes the photo straight away, says so, and asks the name; the
+  photo is held in memory and saved only once a name is given, and dropped if they say no or give no name. `ask_name` asks who
+  they are first. `wake_word` stays quiet until "sonku". An unknown face must stay in view `UNKNOWN_CONFIRM_SEC` (3 s), and after
+  asking one stranger Sonku waits `UNKNOWN_PROMPT_COOLDOWN_MIN` (20 min) before asking again.
+- **Talking first.** After greeting someone, if they stay quiet for `PROACTIVE_IDLE_SEC` (6 s), Sonku takes a camera frame and
+  says something like a family member would: what it can see (people, what they are doing or wearing, the table, the room) and a
+  friendly question or offer of help, asking who an unknown person is. It is dropped if the person speaks first.
+  `PROACTIVE_ENABLED=false` turns it off. These frames go to Meta like any other photo question.
+- **Less waiting.** If an answer is slower than `THINKING_CUE_AFTER_SEC` (2.5 s) Sonku says "Hmm, let me think." Short casual
+  turns use the lightest Meta reasoning level; real questions and photos keep `META_REASONING_EFFORT`
+  (`META_ADAPTIVE_EFFORT=false` turns that off). Every turn logs `stt_ms`, `llm_first_sentence_ms`, `first_audio_ms`, `effort`.
 
 ## Listening, answers, models and memory
 - **Long sentences.** After a sentence that sounds unfinished (it ends on "and", "because", "the"... or "wait, let me think"),

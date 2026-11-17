@@ -45,6 +45,11 @@ def _effort() -> str:
     return v if v in ("minimal", "low", "medium", "high", "xhigh") else "low"  # Muse reasoning is always on
 
 
+def _mode() -> str:
+    v = _s("UNKNOWN_FACE_MODE", "ask_photo").lower()
+    return v if v in ("ask_photo", "capture_first", "ask_name", "wake_word") else "ask_photo"
+
+
 def _p(key: str, default: str) -> Path:
     p = Path(os.path.expanduser(_s(key, default)))
     return p if p.is_absolute() else BASE_DIR / p
@@ -54,7 +59,6 @@ def _p(key: str, default: str) -> Path:
 EDITABLE: dict[str, tuple[str, str, list[str] | None]] = {
     "llm_backend": ("str", "LLM backend", ["meta_api", "ollama"]),
     "ollama_model": ("str", "Local model (Ollama tag)", None),
-    "default_voice": ("str", "Voice", ["charvi", "satvik"]),
     "greeting_enabled": ("bool", "Greet known people", None),
     "greet_cooldown_min": ("float", "Greeting cooldown (minutes)", None),
     "session_timeout_sec": ("int", "Conversation timeout (seconds)", None),
@@ -65,6 +69,11 @@ EDITABLE: dict[str, tuple[str, str, list[str] | None]] = {
     "max_memory_gb": ("float", "Memory limit (GB)", None),
     "meta_read_timeout": ("float", "Meta API timeout before fallback (seconds)", None),
     "wake_words": ("str", "Wake words (comma separated)", None),
+    "unknown_face_mode": ("str", "Unknown face: what to do", ["ask_photo", "capture_first", "ask_name", "wake_word"]),
+    "unknown_prompt_cooldown_min": ("float", "Minutes before asking a stranger again", None),
+    "proactive_enabled": ("bool", "Start conversations by itself (offer help, comment on the scene)", None),
+    "thinking_cue": ("bool", "Say \"let me think\" while a slow answer is on its way", None),
+    "adaptive_effort": ("bool", "Lighter thinking for short casual questions", None),
     "audio_priority": ("str", "Audio device priority (bluetooth, usb, other)", None),
 }
 
@@ -97,9 +106,7 @@ class Settings:
     whisper_cpp_bin: str
     whisper_cpp_model: str
     indic_stt_model: str
-    mithi_model_path: str
-    default_voice: str
-    tts_fallback_gtts: bool
+    gtts_tld: str
     audio_input_match: str
     audio_output_device: str
     audio_backend: str
@@ -129,6 +136,15 @@ class Settings:
     session_timeout_sec: int
     session_absent_sec: int
     require_face_consent: bool
+    unknown_face_mode: str
+    unknown_confirm_sec: float
+    unknown_prompt_cooldown_min: float
+    stage_timeout_sec: int
+    proactive_enabled: bool
+    proactive_idle_sec: float
+    thinking_cue: bool
+    thinking_cue_after_sec: float
+    adaptive_effort: bool
     # memory
     data_dir: Path
     db_path: Path
@@ -183,9 +199,7 @@ class Settings:
             whisper_cpp_bin=_s("WHISPER_CPP_BIN", "whisper-cli"),
             whisper_cpp_model=_s("WHISPER_CPP_MODEL"),
             indic_stt_model=_s("INDIC_STT_MODEL", "bodhan-ai/indic-transcribe-core"),
-            mithi_model_path=_s("MITHI_MODEL_PATH", "/home/dhirajpatra/mithi-v1-flash"),
-            default_voice=_s("DEFAULT_VOICE", "charvi"),
-            tts_fallback_gtts=_b("TTS_FALLBACK_GTTS", True),
+            gtts_tld=_s("GTTS_TLD", "co.in"),
             audio_input_match=_s("AUDIO_INPUT_MATCH", "Jabra"),
             audio_output_device=_s("AUDIO_OUTPUT_DEVICE", "default"),
             audio_backend=_s("AUDIO_BACKEND", "auto").lower(),
@@ -213,6 +227,15 @@ class Settings:
             session_timeout_sec=_i("SESSION_TIMEOUT_SEC", 120),
             session_absent_sec=_i("SESSION_ABSENT_SEC", 45),
             require_face_consent=_b("REQUIRE_FACE_CONSENT", True),
+            unknown_face_mode=_mode(),
+            unknown_confirm_sec=_f("UNKNOWN_CONFIRM_SEC", 3.0),
+            unknown_prompt_cooldown_min=_f("UNKNOWN_PROMPT_COOLDOWN_MIN", 20.0),
+            stage_timeout_sec=_i("STAGE_TIMEOUT_SEC", 60),
+            proactive_enabled=_b("PROACTIVE_ENABLED", True),
+            proactive_idle_sec=_f("PROACTIVE_IDLE_SEC", 6.0),
+            thinking_cue=_b("THINKING_CUE", True),
+            thinking_cue_after_sec=_f("THINKING_CUE_AFTER_SEC", 2.5),
+            adaptive_effort=_b("META_ADAPTIVE_EFFORT", True),
             data_dir=data_dir,
             db_path=_p("DB_PATH", str(data_dir / "sonku.db")),
             max_memory_gb=_f("MAX_MEMORY_GB", 5.0),

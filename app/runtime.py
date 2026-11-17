@@ -124,7 +124,8 @@ class Runtime:
             "audio": self.audio.status(),
             "robot": self.orch.describe(),
             "presence": None if not w else {
-                "face_present": w.face_present, "status": w.status, "name": w.name, "score": round(w.score, 3)},
+                "face_present": w.face_present, "status": w.status, "name": w.name, "score": round(w.score, 3),
+                "faces": w.faces, "people": [x["name"] for x in w.people], "unknown": w.unknown},
             "llm": self.router.status(),
             "memory": self.store.usage(),
             "cache": self.cache.stats(),

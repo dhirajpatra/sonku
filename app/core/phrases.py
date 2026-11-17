@@ -16,6 +16,30 @@ PHRASES: dict[str, dict[str, str]] = {
         "pa": "ਸਤ ਸ੍ਰੀ ਅਕਾਲ {name}! ਤੁਹਾਨੂੰ ਦੁਬਾਰਾ ਮਿਲ ਕੇ ਖੁਸ਼ੀ ਹੋਈ।",
         "or": "ନମସ୍କାର {name}! ଆପଣଙ୍କୁ ପୁଣି ଦେଖି ଖୁସି ଲାଗିଲା।",
     },
+    "greet_many": {
+        "en": "Hello {names}! Nice to see you all.",
+        "hi": "नमस्ते {names}! आप सबको देखकर अच्छा लगा।",
+    },
+    "stranger_ask_photo": {
+        "en": "Hi, I'm Sonku! I don't think we've met. May I take your photo so I can remember you? Please say yes or no.",
+        "hi": "नमस्ते, मैं सोनकू हूँ! मुझे नहीं लगता हम पहले मिले हैं। क्या मैं आपकी फ़ोटो ले सकता हूँ ताकि आपको याद रख सकूँ? कृपया हाँ या ना कहें।",
+    },
+    "stranger_ask_photo_group": {
+        "en": "Hello! I don't think I've met everyone here yet. I'm Sonku. May I take a photo of the new face so I can remember them?",
+        "hi": "नमस्ते! लगता है मैं यहाँ सबसे अभी नहीं मिला। मैं सोनकू हूँ। क्या मैं नए व्यक्ति की फ़ोटो ले सकता हूँ ताकि उन्हें याद रख सकूँ?",
+    },
+    "stranger_photo_taken": {
+        "en": "Hi, I'm Sonku! I've just taken a quick photo so I can remember you. What's your name?",
+        "hi": "नमस्ते, मैं सोनकू हूँ! मैंने आपको याद रखने के लिए अभी एक फ़ोटो ली है। आपका नाम क्या है?",
+    },
+    "stranger_ask_name": {
+        "en": "Hi, I'm Sonku! I don't think we've met. Who are you?",
+        "hi": "नमस्ते, मैं सोनकू हूँ! मुझे नहीं लगता हम मिले हैं। आप कौन हैं?",
+    },
+    "photo_taken_ask_name": {"en": "Thanks! I've taken your photo. What's your name?", "hi": "धन्यवाद! मैंने आपकी फ़ोटो ले ली है। आपका नाम क्या है?"},
+    "photo_consent_retry": {"en": "Sorry, may I take your photo to remember you? Please say yes or no.", "hi": "माफ़ कीजिए, क्या मैं आपकी फ़ोटो ले सकता हूँ? कृपया हाँ या ना कहें।"},
+    "name_final_skip": {"en": "No problem, I've thrown the photo away. How can I help?", "hi": "कोई बात नहीं, मैंने फ़ोटो हटा दी है। मैं कैसे मदद करूँ?"},
+    "offer_help": {"en": "Is there anything I can help you with?", "hi": "क्या मैं आपकी कोई मदद कर सकता हूँ?"},
     "listening": {"en": "Yes?", "hi": "जी?"},
     "meet_ask_name": {
         "en": "Hi, I'm Sonku! I don't think we've met. What's your name?",
@@ -51,3 +75,14 @@ def phrase(key: str, lang: str = "en", **fmt) -> str:
 def phrase_lang(key: str, lang: str) -> str:
     """Language the phrase is actually written in (English when that language has no translation)."""
     return lang if lang in PHRASES[key] else "en"
+
+
+_AND = {"en": "and", "hi": "और", "bn": "এবং", "ta": "மற்றும்", "te": "మరియు", "kn": "ಮತ್ತು", "mr": "आणि",
+        "gu": "અને", "pa": "ਅਤੇ", "or": "ଏବଂ", "ml": "ഒപ്പം"}
+
+
+def join_names(names: list[str], lang: str = "en") -> str:
+    """'Asha', 'Ravi' and 'Meera' -> 'Asha, Ravi and Meera' (with the word for "and" in that language)."""
+    if len(names) <= 1:
+        return "".join(names)
+    return ", ".join(names[:-1]) + f" {_AND.get(lang, 'and')} " + names[-1]

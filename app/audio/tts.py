@@ -1,6 +1,7 @@
-"""Text to speech: Mithi v1 Flash (offline, 11 Indian languages) with an online gTTS fallback.
+"""Text to speech with Google's gTTS (online) played through the sound server.
 
-`speak_stream` overlaps work: the calling thread synthesises sentence N+1 while a player
+Sonku speaks every language it answers in that gTTS supports; English uses an Indian accent by default
+(GTTS_TLD=co.in). `speak_stream` overlaps work: the calling thread synthesises sentence N+1 while a player
 thread is still speaking sentence N, so the first sentence starts as soon as it exists.
 """
 from __future__ import annotations
@@ -8,8 +9,9 @@ from __future__ import annotations
 import logging
 import os
 import queue
+import random
+import shutil
 import subprocess
-import sys
 import tempfile
 import threading
 import time
@@ -17,34 +19,48 @@ from typing import Iterable
 
 from app.audio.devices import AudioRouter
 from app.config import Settings
-from app.utils.lang import MITHI_LANGS, normalize_lang
+from app.utils.lang import LANG_NAMES, normalize_lang
 from app.utils.text import clean_for_tts, split_long
 
 log = logging.getLogger("sonku.tts")
 _DONE = object()
+CUES = {
+    "en": ["Hmm, let me think.", "Let me see.", "One moment."],
+    "hi": ["हम्म, ज़रा सोचने दीजिए।", "एक पल।"],
+}
 
 
 class TTS:
     def __init__(self, s: Settings, audio: AudioRouter | None = None):
         self.s = s
         self.audio = audio or AudioRouter(s)
-        self.mithi = None
         self.ready = False
+        self.supported: set[str] = set()
         self.first_audio_ts = 0.0
-        self._synth_lock = threading.Lock()
         self._proc: subprocess.Popen | None = None
         self._counter = 0
+        self._warned: dict[str, float] = {}
 
     def load(self) -> None:
+        """Check that gTTS and sox are installed; raises with a fix-it hint otherwise."""
         try:
-            sys.path.insert(0, self.s.mithi_model_path)
-            from mithi_tts import Mithi  # type: ignore
+            from gtts.lang import tts_langs
+        except ImportError as exc:
+            raise RuntimeError("gTTS is not installed: pip install gTTS") from exc
+        if not shutil.which("sox"):
+            raise RuntimeError("sox not found: sudo apt install sox libsox-fmt-mp3")
+        langs = tts_langs()
+        self.supported = {code for code in LANG_NAMES if code in langs}
+        missing = [LANG_NAMES[c] for c in LANG_NAMES if c not in self.supported]
+        if missing:
+            log.warning("gTTS cannot speak %s: replies in those languages stay silent", ", ".join(missing))
+        self.ready = True
+        log.info("speech ready (gTTS, %d languages, English accent %s)", len(self.supported), self.s.gtts_tld)
 
-            self.mithi = Mithi(self.s.mithi_model_path, device="cpu")
-            log.info("Mithi TTS loaded")
-        except Exception as exc:
-            log.error("Mithi TTS unavailable (%s)%s", exc, "; falling back to gTTS (English, online)" if self.s.tts_fallback_gtts else "")
-        self.ready = self.mithi is not None or self.s.tts_fallback_gtts
+    def _warn_once(self, key: str, msg: str, *args, every: float = 60.0) -> None:
+        if time.time() - self._warned.get(key, 0.0) > every:
+            self._warned[key] = time.time()
+            log.error(msg, *args)
 
     # -- synthesis --------------------------------------------------------------
     def _tmp(self, ext: str) -> str:
@@ -56,28 +72,21 @@ class TTS:
         if not text:
             return None
         lang = normalize_lang(lang)
-        if self.mithi is not None and lang in MITHI_LANGS:
-            try:
-                path = self._tmp("wav")
-                with self._synth_lock:
-                    audio = self.mithi.synthesize(text, lang=lang, voice=self.s.default_voice)
-                    self.mithi.save(audio, path)
-                return path
-            except Exception as exc:
-                log.error("Mithi synthesis failed (%s)", exc)
-        if self.s.tts_fallback_gtts:
-            try:
-                from gtts import gTTS
+        if self.supported and lang not in self.supported:
+            self._warn_once(f"lang-{lang}", "gTTS has no %s voice; not speaking this reply", LANG_NAMES.get(lang, lang))
+            return None
+        try:
+            from gtts import gTTS
 
-                mp3, wav = self._tmp("mp3"), self._tmp("wav")
-                gTTS(text=text, lang=lang if lang in MITHI_LANGS else "en").save(mp3)
-                subprocess.run(["sox", mp3, "-r", "48000", "-c", "2", wav], check=True,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                os.unlink(mp3)
-                return wav
-            except Exception as exc:
-                log.error("gTTS fallback failed (%s)", exc)
-        return None
+            mp3, wav = self._tmp("mp3"), self._tmp("wav")
+            gTTS(text=text, lang=lang, tld=self.s.gtts_tld if lang == "en" else "com").save(mp3)
+            subprocess.run(["sox", mp3, "-r", "48000", "-c", "2", wav], check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            os.unlink(mp3)
+            return wav
+        except Exception as exc:
+            self._warn_once("synth", "speech synthesis failed (%s); is the internet reachable?", exc)
+            return None
 
     def _play(self, path: str) -> None:
         try:
@@ -94,31 +103,53 @@ class TTS:
                 pass
 
     # -- public -----------------------------------------------------------------
-    def speak_stream(self, sentences: Iterable[str], lang: str = "en") -> str:
-        """Speak sentences as they arrive; returns the full text that was spoken."""
+    def speak_stream(self, sentences: Iterable[str], lang: str = "en", cue: bool = False) -> str:
+        """Speak sentences as they arrive; returns the full text that was spoken.
+
+        With cue=True a short "let me think" is spoken if the first sentence takes longer than
+        THINKING_CUE_AFTER_SEC, so a slow model never means a long silence."""
         q: queue.Queue = queue.Queue(maxsize=3)
         self.first_audio_ts = 0.0
+        cue_lock = threading.Lock()
+        real_started = threading.Event()  # set once the first real sentence has arrived
 
         def player() -> None:
             while True:
                 item = q.get()
                 if item is _DONE:
                     return
-                if not self.first_audio_ts:
+                path, is_cue = item
+                if not is_cue and not self.first_audio_ts:
                     self.first_audio_ts = time.time()
-                self._play(item)
+                self._play(path)
+
+        def cue_worker() -> None:
+            if real_started.wait(self.s.thinking_cue_after_sec):
+                return
+            with cue_lock:
+                if real_started.is_set():
+                    return
+                cue_lang = lang if lang in CUES else "en"
+                path = self._synth(random.choice(CUES[cue_lang]), cue_lang)
+                if path and not real_started.is_set():
+                    q.put((path, True))
 
         t = threading.Thread(target=player, daemon=True, name="tts-player")
         t.start()
+        if cue and self.s.thinking_cue:
+            threading.Thread(target=cue_worker, daemon=True, name="tts-cue").start()
         spoken: list[str] = []
         try:
             for sentence in sentences:
+                with cue_lock:  # a cue that is mid-synthesis is queued first, so the order stays right
+                    real_started.set()
                 spoken.append(sentence)
                 for piece in split_long(sentence):  # keep each synthesis call short
                     path = self._synth(piece, lang)
                     if path:
-                        q.put(path)
+                        q.put((path, False))
         finally:
+            real_started.set()
             q.put(_DONE)
             t.join(timeout=600)
         log.info("[Sonku %s]: %s", lang, " ".join(spoken))

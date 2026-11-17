@@ -11,7 +11,7 @@ class FakeWatcher:
     def snapshot(self):
         return self.p
 
-    def capture_embeddings(self, n=3):
+    def capture_embeddings(self, n=3, **kw):
         return [np.ones(128, dtype=np.float32) / np.sqrt(128) for _ in range(n)]
 
     def reset_identity(self):
@@ -26,7 +26,7 @@ class FakeFaces:
 def stub_llm(rt, reply="Sure thing."):
     calls = []
 
-    def fake(system, history, text, image=None):
+    def fake(system, history, text, image=None, **kw):
         calls.append((system, list(history), text, image))
         rt.router.last_backend = "stub"
         yield reply

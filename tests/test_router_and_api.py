@@ -68,8 +68,8 @@ def test_people_memory_settings_flow(client, rt):
     assert client.patch(f"/api/people/{pid}", auth=AUTH, headers=H, json={"name": "Asha P"}).status_code == 200
     mem = client.get("/api/memory", auth=AUTH).json()
     assert mem["status"] == "ok" and mem["people"] == 1
-    r = client.put("/api/settings", auth=AUTH, headers=H, json={"greet_cooldown_min": 2, "default_voice": "satvik"})
-    assert r.status_code == 200 and rt.s.default_voice == "satvik" and rt.store.get_settings()["greet_cooldown_min"] == "2.0"
+    r = client.put("/api/settings", auth=AUTH, headers=H, json={"greet_cooldown_min": 2, "unknown_face_mode": "capture_first"})
+    assert r.status_code == 200 and rt.s.unknown_face_mode == "capture_first" and rt.store.get_settings()["greet_cooldown_min"] == "2.0"
     assert client.put("/api/settings", auth=AUTH, headers=H, json={"meta_api_key": "x"}).status_code == 422
     assert client.delete("/api/people?confirm=yes", auth=AUTH, headers=H).json()["deleted"] == 1
     assert client.get("/api/people", auth=AUTH).json() == []
@@ -92,9 +92,9 @@ def test_settings_persist_across_restart(tmp_path, monkeypatch):
     from app.runtime import Runtime
 
     r1 = Runtime(Settings.from_env())
-    r1.store.save_setting("default_voice", "satvik")
+    r1.store.save_setting("unknown_face_mode", "capture_first")
     r1.store.close()
     r2 = Runtime(Settings.from_env())
     r2.start()
-    assert r2.s.default_voice == "satvik"
+    assert r2.s.unknown_face_mode == "capture_first"
     r2.stop()

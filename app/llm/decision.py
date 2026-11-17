@@ -10,6 +10,7 @@ from app.llm.ollama_client import OllamaClient, OllamaError
 
 log = logging.getLogger("sonku.decision")
 _WEAK = re.compile(r"\b(this|that|these|those|here|there|it)\b", re.I)
+_HARD = re.compile(r"\b(explain|why|how (to|do|does|did|can|could|many|much|long|far)|compare|difference|syllabus|plan|steps?|solve|calculate|code|write|essay|summar\w+|translate|recommend|advice|should i|prove|derive)\b", re.I)
 _ASCII_WORD = re.compile(r"^[A-Za-z][A-Za-z'\- ]{0,28}$")
 
 
@@ -32,6 +33,15 @@ class Decision:
         except OllamaError as exc:
             log.debug("decision model unavailable: %s", exc)
             return False
+
+    def reasoning_effort(self, text: str, has_image: bool) -> str | None:
+        """Short casual turns ("how are you") get the lightest thinking so the answer starts sooner; anything that
+        looks like a real question, or a photo, keeps the configured effort. None = use the configured effort."""
+        if not self.s.adaptive_effort or has_image:
+            return None
+        if len(text.split()) <= 8 and not _HARD.search(text):
+            return "minimal"
+        return None
 
     def extract_name(self, text: str) -> str | None:
         name = intents.extract_name(text)
