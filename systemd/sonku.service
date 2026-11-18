@@ -18,7 +18,7 @@ Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
 ExecStartPre=-/usr/bin/wpctl set-mute @DEFAULT_SINK@ 0
 ExecStartPre=-/usr/bin/wpctl set-volume @DEFAULT_SINK@ 0.70
 ExecStartPre=-/usr/bin/wpctl set-mute @DEFAULT_SOURCE@ 0
-ExecStartPre=-/usr/bin/wpctl set-volume @DEFAULT_SOURCE@ 0.75
+ExecStartPre=-/usr/bin/wpctl set-volume @DEFAULT_SOURCE@ 1.00
 
 ExecStart=/home/dhirajpatra/robot_env/bin/python -m app
 Restart=always
