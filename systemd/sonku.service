@@ -12,6 +12,14 @@ Environment=PYTHONUNBUFFERED=1
 Environment=JACK_NO_START_SERVER=1
 # PipeWire/PulseAudio live in the user's session; without this the service cannot see Bluetooth or USB audio
 Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+
+# Set speaker to 70% and mic to 75% on startup (change 0.70 / 0.75 to any level you prefer)
+ExecStartPre=-/usr/bin/wpctl set-mute @DEFAULT_SINK@ 0
+ExecStartPre=-/usr/bin/wpctl set-volume @DEFAULT_SINK@ 0.70
+ExecStartPre=-/usr/bin/wpctl set-mute @DEFAULT_SOURCE@ 0
+ExecStartPre=-/usr/bin/wpctl set-volume @DEFAULT_SOURCE@ 0.75
+
 ExecStart=/home/dhirajpatra/robot_env/bin/python -m app
 Restart=always
 RestartSec=5
