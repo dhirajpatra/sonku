@@ -90,7 +90,7 @@ def create_app(rt: Runtime) -> FastAPI:
     def enroll(body: NameBody) -> dict:
         if not rt.watcher:
             raise HTTPException(503, "Camera or face models are not available")
-        embs = rt.watcher.capture_embeddings(3)
+        embs = rt.watcher.capture_embeddings(max(1, min(s.enroll_templates, s.faces_per_person)), spacing=0.7)
         if not embs:
             raise HTTPException(422, "No face seen. Stand in front of Sonku and try again.")
         known, _ = rt.faces.match(embs[0], rt.store.gallery())

@@ -96,6 +96,19 @@ shows the choice and has a *Rescan* button. `diagnose.py audio` prints the same 
   turns use the lightest Meta reasoning level; real questions and photos keep `META_REASONING_EFFORT`
   (`META_ADAPTIVE_EFFORT=false` turns that off). Every turn logs `stt_ms`, `llm_first_sentence_ms`, `first_audio_ms`, `effort`.
 
+## Recognition: how faces are followed
+Each face in view is tracked from frame to frame and identified on its own, so several people are recognised at the same
+time (`FACE_MAX_PEOPLE`, default 6). A new face is sampled every frame (the loop speeds up to 0.25 s while someone is being
+identified); one strong match is enough, a weaker one needs two samples that agree, and the last few frames are averaged to
+smooth out blur. A known face is re-checked every 2 s, so a different person sitting in the same spot is noticed. Faces are tried
+from `FACE_MIN_WIDTH_PX` (48 at 640 px wide), but a face is only called a *stranger* if it is at least
+`FACE_UNKNOWN_MIN_WIDTH_PX` (70) wide, because small faces are unreliable and a known family member at the back of the room should
+not be asked for a photo. Enrolment stores `ENROLL_TEMPLATES` (5) templates 0.7 s apart; turn your head slightly while it
+captures. Further looks are learned automatically up to `FACES_PER_PERSON` (6).
+`python scripts/diagnose.py faces` prints every face it sees, how wide it is, who it matches and the score.
+For people far from the camera use `CAMERA_WIDTH=1280`, `CAMERA_HEIGHT=720`: faces are found on a smaller copy
+(`FACE_DETECT_MAX_SIDE`) but recognised from the sharp full-size pixels.
+
 ## Listening, answers, models and memory
 - **Long sentences.** After a sentence that sounds unfinished (it ends on "and", "because", "the"... or "wait, let me think"),
   Sonku keeps listening for up to `PATIENCE_SEC` (8) seconds and joins the parts into one question. A finished sentence is

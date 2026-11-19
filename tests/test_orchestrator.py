@@ -60,7 +60,7 @@ def test_unknown_face_enrolment_with_consent(rt):
     assert rt.orch.session.stage == "await_consent" and rt.store.list_people() == []
     rt.orch.handle_utterance("yes please", "en")
     people = rt.store.list_people()
-    assert [p["name"] for p in people] == ["Asha"] and people[0]["face_count"] == 3
+    assert [p["name"] for p in people] == ["Asha"] and people[0]["face_count"] == rt.s.enroll_templates
     assert rt.orch.session.person_id == people[0]["id"]
 
 
@@ -127,7 +127,7 @@ def test_explicit_request_to_remember_skips_consent_question(rt):
     rt.orch.handle_utterance("hi sonku", "en")
     rt.orch.handle_utterance("my name is Dheeraj and please remember my face", "en")
     people = rt.store.list_people()
-    assert [p["name"] for p in people] == ["Dheeraj"] and people[0]["face_count"] == 3
+    assert [p["name"] for p in people] == ["Dheeraj"] and people[0]["face_count"] == rt.s.enroll_templates
     assert rt.orch.session.stage == "chat"
 
 

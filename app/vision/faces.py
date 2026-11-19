@@ -37,14 +37,27 @@ class FaceEngine:
         log.info("face models loaded")
 
     def detect(self, frame: np.ndarray) -> list[np.ndarray]:
-        """Faces wide enough to be 'nearby', largest first. Each row: x,y,w,h, 10 landmark coords, score."""
+        """Faces big enough to try, largest first. Each row: x,y,w,h, 10 landmark coords, score.
+
+        FACE_MIN_WIDTH_PX is meant for a 640-pixel-wide frame and is scaled for other sizes. Large frames are
+        searched on a smaller copy (FACE_DETECT_MAX_SIDE) to stay fast, but the rows are in full-size
+        coordinates, so recognition still uses the sharp full-size pixels."""
         h, w = frame.shape[:2]
+        scale, img = 1.0, frame
+        if self.s.face_detect_max_side and max(h, w) > self.s.face_detect_max_side:
+            scale = self.s.face_detect_max_side / max(h, w)
+            img = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        ih, iw = img.shape[:2]
         with self._lock:
-            self.det.setInputSize((w, h))
-            _ret, faces = self.det.detect(frame)
+            self.det.setInputSize((iw, ih))
+            _ret, faces = self.det.detect(img)
         if faces is None:
             return []
-        rows = [f for f in faces if f[2] >= self.s.face_min_width_px]
+        if scale != 1.0:
+            faces = faces.copy()
+            faces[:, :14] /= scale  # box and landmarks back to full-size pixels (the score stays)
+        min_w = self.s.face_min_width_px * (w / 640.0)
+        rows = [f for f in faces if f[2] >= min_w]
         rows.sort(key=lambda f: float(f[2] * f[3]), reverse=True)
         return rows
 

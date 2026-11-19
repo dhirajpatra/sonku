@@ -44,23 +44,27 @@ def camera():
 
 
 def faces():
+    from app.memory.store import MemoryStore
     from app.vision.camera import Camera
     from app.vision.faces import FaceEngine
-    cam, eng = Camera(s), FaceEngine(s)
+    cam, eng, store = Camera(s), FaceEngine(s), MemoryStore(s)
     cam.start()
     eng.load()
-    for i in range(5):
+    gallery = store.gallery()
+    print(f"{len(gallery)} stored face templates; FACE_MATCH_THRESHOLD={s.face_match_threshold}, FACE_MIN_WIDTH_PX={s.face_min_width_px}")
+    for i in range(6):
         frame = cam.read()
         t0 = time.time()
         rows = eng.detect(frame)
         ms = (time.time() - t0) * 1000
-        emb_ms = 0.0
-        if rows:
-            t1 = time.time()
-            eng.embed(frame, rows[0])
-            emb_ms = (time.time() - t1) * 1000
-        print(f"frame {i}: {len(rows)} face(s)  detect {ms:.0f} ms  embed {emb_ms:.0f} ms")
-        time.sleep(0.5)
+        print(f"frame {i}: {len(rows)} face(s)  detect {ms:.0f} ms  (frame {frame.shape[1]}x{frame.shape[0]})")
+        for j, row in enumerate(rows[: s.face_max_people]):
+            emb = eng.embed(frame, row)
+            pid, score = eng.match(emb, gallery)
+            who = store.get_person(pid)["name"] if pid else "UNKNOWN"
+            judge = "" if row[2] >= s.face_unknown_min_width_px * frame.shape[1] / 640 else "  (too small to call unknown)"
+            print(f"    face {j}: {int(row[2])}px wide -> {who} (best score {score:.2f}){judge}")
+        time.sleep(0.7)
     cam.stop()
 
 

@@ -151,6 +151,9 @@ class Orchestrator(threading.Thread):
         people = self._people_of(p)
         return self.rt.store.get_person(people[0]["id"]) if people else None
 
+    def _n_templates(self) -> int:
+        return max(1, min(self.s.enroll_templates, self.s.faces_per_person))
+
     # ---------------------------------------------------------------- sessions
     def _end_session(self, reason: str = "") -> None:
         if self.session:
@@ -280,7 +283,7 @@ class Orchestrator(threading.Thread):
             lang = sess.lang
             sess.last_activity = now
             if mode == "capture_first":
-                embs = self.rt.watcher.capture_embeddings(3, unknown_only=True)
+                embs = self.rt.watcher.capture_embeddings(self._n_templates(), spacing=0.7, unknown_only=True)
                 if not embs:  # they moved away: try again soon
                     self._last_stranger_prompt = now - self.s.unknown_prompt_cooldown_min * 60 + 30
                     return
@@ -442,7 +445,7 @@ class Orchestrator(threading.Thread):
     def _enroll(self, sess: Session, name: str, lang: str) -> None:
         sess.stage = "chat"
         w = self.rt.watcher
-        embs = w.capture_embeddings(3, unknown_only=True) if w else []
+        embs = w.capture_embeddings(self._n_templates(), spacing=0.7, unknown_only=True) if w else []
         if not embs:
             self._say(phrase("enroll_fail", phrase_lang("enroll_fail", lang)), lang)
             return
@@ -452,7 +455,7 @@ class Orchestrator(threading.Thread):
     def _stage_photo_consent(self, sess: Session, text: str, lang: str) -> None:
         if intents.is_yes(text) or intents.implies_consent(text):
             w = self.rt.watcher
-            embs = w.capture_embeddings(3, unknown_only=True) if w else []
+            embs = w.capture_embeddings(self._n_templates(), spacing=0.7, unknown_only=True) if w else []
             if not embs:
                 sess.stage = "chat"
                 self._say(phrase("enroll_fail", phrase_lang("enroll_fail", lang)), lang)

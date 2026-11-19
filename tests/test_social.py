@@ -52,8 +52,8 @@ def test_everyone_in_view_is_recognised(rt):
     f.embs, f.rows = vec, [row(1, 120), row(2, 90), row(3, 80)]  # Asha, Ravi and a stranger
     w = PresenceWatcher(rt.s, None, f, rt.store)
     frame, t = np.zeros((20, 20, 3), np.uint8), time.time()
-    w._step(frame, t)
-    w._step(frame, t + 2.1)
+    for k in range(4):  # frames 0.7 s apart, like the real loop
+        w._step(frame, t + 0.7 * k)
     p = w.snapshot()
     assert [x["name"] for x in p.people] == ["Asha", "Ravi"]  # largest (closest) face first
     assert p.faces == 3 and p.unknown == 1 and p.seq == 2 and p.name == "Asha" and p.unknown_since > 0
@@ -107,7 +107,7 @@ def test_ask_photo_mode_asks_then_photographs_then_asks_the_name(rt):
     assert rt.orch.session.stage == "await_name_final" and rt.store.list_people() == []  # photo is only held in memory
     rt.orch.handle_utterance("my name is Meera", "en")
     people = rt.store.list_people()
-    assert [x["name"] for x in people] == ["Meera"] and people[0]["face_count"] == 3
+    assert [x["name"] for x in people] == ["Meera"] and people[0]["face_count"] == rt.s.enroll_templates
     assert rt.orch.session.person_id == people[0]["id"]
 
 

@@ -1,8 +1,16 @@
 """Background thread that notices people and works out who they are.
 
-Every face in view (up to MAX_FACES) is recognised, not only the biggest one:
-  people   - known people confirmed in view (two matching checks in a row), closest first
-  unknown  - faces nobody recognises in the latest check
+Every face in view is followed as its own *track* from frame to frame, so several people are recognised at
+the same time and each one is identified independently:
+
+  new track      -> sampled every frame; identified from the average of its last few embeddings.
+                    One strong match is enough; a weaker match needs two samples that agree.
+  known track    -> re-checked every VERIFY_SEC; disagreeing checks send it back to "new"
+                    (a different person sat down in the same spot).
+  unknown track  -> a face close enough to judge that nobody recognises; re-checked every few seconds.
+
+  people   - known people currently in view, closest (largest face) first
+  unknown  - strangers currently in view (only faces large enough to judge fairly count)
   faces    - faces in view right now
 `status`/`person_id`/`name` describe the primary person (the largest known face) for older callers.
 `seq` increments each time a known person is newly confirmed.
@@ -10,8 +18,10 @@ Every face in view (up to MAX_FACES) is recognised, not only the biggest one:
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field, replace
 
 import cv2
@@ -38,25 +48,45 @@ class Presence:
     faces: int = 0
     people: list = field(default_factory=list)  # [{"id": 3, "name": "Asha"}], closest first
     unknown: int = 0
-    unknown_since: float = 0.0  # when an unknown face first showed up and stayed (0 = none)
+    unknown_since: float = 0.0  # when the earliest current stranger first showed up (0 = none)
+
+
+@dataclass
+class Track:
+    tid: int
+    cx: float
+    cy: float
+    w: float
+    h: float
+    first_seen: float
+    last_seen: float
+    embs: deque = field(default_factory=lambda: deque(maxlen=5))
+    votes: deque = field(default_factory=lambda: deque(maxlen=4))  # recent (person_id | None, score)
+    state: str = "new"  # new | known | unknown
+    pid: int | None = None
+    name: str | None = None
+    score: float = 0.0
+    mismatch: int = 0
+    last_sample: float = 0.0
 
 
 class PresenceWatcher(threading.Thread):
-    MAX_FACES = 4
+    TRACK_TTL = 1.5          # a face unseen this long is gone
+    VERIFY_SEC = 2.0         # how often a known face is re-checked
+    UNKNOWN_RECHECK_SEC = 2.0
+    STRONG_MARGIN = 0.15     # a match this far above the threshold is accepted from a single sample
 
     def __init__(self, s: Settings, camera: Camera, faces: FaceEngine, store: MemoryStore, cache=None):
         super().__init__(daemon=True, name="presence")
         self.s, self.camera, self.faces, self.store, self.cache = s, camera, faces, store, cache
         self._p = Presence()
-        self._plock = threading.Lock()
+        self._plock = threading.Lock()  # guards _p; tracks belong to the watcher thread alone
         self._stop_evt = threading.Event()
         self._gallery: list = []
         self._gallery_ver = -1
-        self._seen: dict[int, dict] = {}
-        self._unknown_votes = 0
-        self._unknown_first = 0.0
-        self._last_vote_ts = 0.0
-        self._last_n = 0
+        self._tracks: list[Track] = []
+        self._next_tid = 1
+        self._reset_flag = False
         self._last_learn: dict[int, float] = {}
         self._labels: list[tuple[float, float, str]] = []
         self.last_jpeg: bytes | None = None
@@ -69,8 +99,7 @@ class PresenceWatcher(threading.Thread):
     def reset_identity(self) -> None:
         with self._plock:
             self._p = Presence(seq=self._p.seq, last_face_ts=self._p.last_face_ts)
-            self._seen.clear()
-            self._unknown_votes, self._unknown_first = 0, 0.0
+        self._reset_flag = True
 
     def stop(self) -> None:
         self._stop_evt.set()
@@ -81,7 +110,7 @@ class PresenceWatcher(threading.Thread):
             pid, score = self.faces.match(emb, self._gallery)
         return pid, score
 
-    def capture_embeddings(self, n: int = 3, spacing: float = 0.4, timeout: float = 6.0,
+    def capture_embeddings(self, n: int = 3, spacing: float = 0.4, timeout: float = 8.0,
                            unknown_only: bool = False) -> list[np.ndarray]:
         """Grab fresh frames and embed one face in each. With unknown_only the largest face that nobody
         recognises is used, so a known person standing next to a newcomer is never enrolled by mistake."""
@@ -91,7 +120,7 @@ class PresenceWatcher(threading.Thread):
         while len(out) < n and time.time() < end:
             frame = self.camera.read()
             if frame is not None:
-                rows = self.faces.detect(frame)[: self.MAX_FACES]
+                rows = self.faces.detect(frame)[: self.s.face_max_people]
                 cands = []
                 for row in rows:
                     emb = self.faces.embed(frame, row)
@@ -106,115 +135,174 @@ class PresenceWatcher(threading.Thread):
     # -- thread -----------------------------------------------------------------
     def run(self) -> None:
         interval = self.s.presence_interval_sec if self.camera.fast else max(2.0, self.s.presence_interval_sec)
-        log.info("presence watcher started (every %.1fs)", interval)
+        log.info("presence watcher started (every %.1fs, up to %d faces)", interval, self.s.face_max_people)
         while not self._stop_evt.is_set():
             t0 = time.time()
+            busy = False
             try:
                 frame = self.camera.read()
                 if frame is None:
                     time.sleep(1.0)
                     continue
-                self._step(frame, t0)
+                busy = self._step(frame, t0)
             except Exception:
                 log.exception("presence step failed")
                 time.sleep(1.0)
-            self._stop_evt.wait(max(0.05, interval - (time.time() - t0)))
+            fast = 0.25 if (busy and self.camera.fast) else interval  # look quicker while someone is being identified
+            self._stop_evt.wait(max(0.05, fast - (time.time() - t0)))
 
     def _reload_gallery(self) -> None:
         if self._gallery_ver != self.store.gallery_version:
             self._gallery = self.store.gallery()
             self._gallery_ver = self.store.gallery_version
 
-    def _step(self, frame: np.ndarray, now: float) -> None:
-        rows = self.faces.detect(frame)
-        with self._plock:
-            p = self._p
-            p.faces = len(rows)
-            if not rows:
-                p.face_present = False
+    # -- tracking ---------------------------------------------------------------
+    def _associate(self, rows: list, now: float) -> dict[int, Track]:
+        """Match each detected face to the track it most likely belongs to (nearest, similar size)."""
+        live = [t for t in self._tracks if now - t.last_seen <= self.TRACK_TTL]
+        pairs = []
+        for ri, r in enumerate(rows):
+            cx, cy, w = float(r[0] + r[2] / 2), float(r[1] + r[3] / 2), max(float(r[2]), 1.0)
+            for t in live:
+                dist = math.hypot(cx - t.cx, cy - t.cy) / max(w, t.w)
+                size = abs(math.log(w / max(t.w, 1.0)))
+                if dist < 0.8 and size < 0.5:
+                    pairs.append((dist + size, ri, t))
+        pairs.sort(key=lambda x: (x[0], x[1]))
+        used_rows, used_tracks, assign = set(), set(), {}
+        for _cost, ri, t in pairs:
+            if ri in used_rows or id(t) in used_tracks:
+                continue
+            assign[ri] = t
+            used_rows.add(ri)
+            used_tracks.add(id(t))
+        return assign
+
+    def _due(self, t: Track, now: float) -> bool:
+        if t.state == "new":
+            return now - t.last_sample >= (0.0 if now - t.first_seen < 6.0 else 2.0)
+        return now - t.last_sample >= (self.VERIFY_SEC if t.state == "known" else self.UNKNOWN_RECHECK_SEC)
+
+    def _step(self, frame: np.ndarray, now: float) -> bool:
+        """Process one frame. Returns True while someone is still being identified (the loop then runs faster)."""
+        if self._reset_flag:
+            self._tracks.clear()
+            self._reset_flag = False
+        rows = self.faces.detect(frame)[: self.s.face_max_people]
+        if not rows:
+            self._tracks = [t for t in self._tracks if now - t.last_seen <= self.TRACK_TTL]
+            with self._plock:
+                p = self._p
+                p.faces, p.face_present = 0, False
+                self._summarise(p, now)
                 if (p.status != "none" or p.people) and now - p.last_face_ts > self.s.absence_sec:
                     log.info("everyone left the frame (%s)", p.name or p.status)
                     self._p = Presence(seq=p.seq, last_face_ts=p.last_face_ts)  # keep it: sessions measure absence from here
-                    self._seen.clear()
-                    self._unknown_votes, self._unknown_first = 0, 0.0
-                self._publish(frame, rows)
-                return
-            p.face_present = True
-            p.last_face_ts = now
-            if p.status == "none":
-                p.status, p.since = "checking", now
-            stable_known = bool(p.people) and p.unknown == 0
-            interval = 8.0 if stable_known else (2.0 if p.unknown and not p.people else 1.0)
-            due = now - self._last_vote_ts >= interval or len(rows) != self._last_n
-        if due:
-            self._vote(frame, rows, now)
-        self._publish(frame, rows)
+                    self._tracks.clear()
+            self._publish(frame, rows)
+            return False
 
-    def _vote(self, frame: np.ndarray, rows: list, now: float) -> None:
+        assign = self._associate(rows, now)
+        current: list[tuple[Track, np.ndarray]] = []
+        for ri, r in enumerate(rows):
+            cx, cy, w, h = float(r[0] + r[2] / 2), float(r[1] + r[3] / 2), float(r[2]), float(r[3])
+            t = assign.get(ri)
+            if t is None:
+                t = Track(self._next_tid, cx, cy, w, h, first_seen=now, last_seen=now)
+                self._next_tid += 1
+            t.cx, t.cy, t.w, t.h, t.last_seen = cx, cy, w, h, now
+            current.append((t, r))
+        keep = {id(t) for t, _ in current}
+        self._tracks = [t for t, _ in current] + [t for t in self._tracks if id(t) not in keep and now - t.last_seen <= self.TRACK_TTL]
+
         self._reload_gallery()
-        self._last_vote_ts, self._last_n = now, len(rows)
-        results = []  # (row, pid, score, emb)
-        for row in rows[: self.MAX_FACES]:
-            emb = self.faces.embed(frame, row)
-            pid, score = self._match(emb)
-            results.append((row, pid, score, emb))
-        unknown_n = sum(1 for r in results if r[1] is None)
-        best_unknown = max((r[2] for r in results if r[1] is None), default=0.0)
+        frame_scale = frame.shape[1] / 640.0
         newly: list = []
         learn: list = []
+        for t, r in current:
+            if self._due(t, now):
+                self._process(t, frame, r, now, frame_scale, newly, learn)
         with self._plock:
             p = self._p
-            matched: dict[int, tuple] = {}
-            for row, pid, score, emb in results:
-                if pid is not None and (pid not in matched or score > matched[pid][0]):
-                    matched[pid] = (score, emb, float(row[2] * row[3]))
-            for pid in [k for k, v in self._seen.items() if not v["confirmed"] and k not in matched]:
-                del self._seen[pid]  # a person must match on consecutive checks to count
-            for pid, (score, emb, area) in matched.items():
-                e = self._seen.get(pid)
-                if e is None:
-                    e = self._seen[pid] = {"hits": 0, "confirmed": False, "name": None}
-                e.update(last=now, score=score, area=area)
-                e["hits"] += 1
-                if not e["confirmed"] and e["hits"] >= 2:
-                    person = self.store.get_person(pid)
-                    if person:
-                        e["confirmed"], e["name"] = True, person["name"]
-                        p.seq += 1
-                        self.store.touch_seen(pid)
-                        log.info("recognised %s (score %.2f)", person["name"], score)
-                        newly.append((pid, emb, score))
-                if e["confirmed"]:
-                    learn.append((pid, emb, score))
-            for pid in [k for k, v in self._seen.items() if v["confirmed"] and now - v["last"] > self.s.absence_sec]:
-                log.info("%s left the frame", self._seen[pid]["name"])
-                del self._seen[pid]
-            if unknown_n:
-                self._unknown_votes += 1
-                if self._unknown_votes == 1:
-                    self._unknown_first = now
-            else:
-                self._unknown_votes, self._unknown_first = 0, 0.0
-            if unknown_n and (p.unknown == 0):
-                log.info("%d face(s) I do not know (best score %.2f)", unknown_n, best_unknown)
-            p.unknown = unknown_n
-            p.unknown_since = self._unknown_first if self._unknown_votes >= 2 else 0.0
-            ranked = sorted(((v["area"], k) for k, v in self._seen.items() if v["confirmed"]), reverse=True)
-            p.people = [{"id": k, "name": self._seen[k]["name"]} for _a, k in ranked]
-            if p.people:
-                top = p.people[0]["id"]
-                p.status, p.person_id, p.name, p.score = "known", top, p.people[0]["name"], self._seen[top]["score"]
-            elif p.unknown_since:
-                p.status, p.person_id, p.name, p.score = "unknown", None, None, best_unknown
-            else:
-                p.status, p.person_id, p.name = "checking", None, None
-            names = {k: v["name"] for k, v in self._seen.items() if v["confirmed"]}
-            self._labels = [((r[0][0] + r[0][2] / 2), (r[0][1] + r[0][3] / 2), names.get(r[1], "?")) for r in results]
+            p.faces, p.face_present, p.last_face_ts = len(rows), True, now
+            self._summarise(p, now)
         for pid, emb, score in newly:
             self._refresh_template(pid, emb, score)
         for pid, emb, score in learn:
             self._learn_template(pid, emb, score, now)
+        self._labels = [(t.cx, t.cy, t.name if t.state == "known" else ("?" if t.state == "unknown" else "...")) for t, _ in current]
+        self._publish(frame, rows)
+        return any(t.state == "new" and now - t.first_seen < 6.0 for t, _ in current)
 
+    def _process(self, t: Track, frame: np.ndarray, row: np.ndarray, now: float, frame_scale: float,
+                 newly: list, learn: list) -> None:
+        emb = self.faces.embed(frame, row)
+        t.embs.append(emb)
+        t.last_sample = now
+        fused = np.mean(list(t.embs)[-3:], axis=0)  # averaging a few frames smooths out blur and head turns
+        norm = float(np.linalg.norm(fused))
+        fused = fused / norm if norm > 0 else fused
+        pid, score = self._match(fused)
+        thr = self.s.face_match_threshold
+
+        if t.state == "known":
+            if pid == t.pid:
+                t.mismatch, t.score = 0, score
+                learn.append((pid, emb, score))
+            else:  # another person now, or just a poor frame: a different match counts double
+                t.mismatch += 2 if pid is not None else 1
+                if t.mismatch >= 3:
+                    log.info("identity changed (%s -> %s)", t.name, pid)
+                    t.state, t.pid, t.name, t.mismatch, t.last_sample = "new", None, None, 0, 0.0
+                    t.embs.clear()
+                    t.embs.append(emb)
+                    t.votes.clear()
+            return
+
+        t.votes.append((pid, score))
+        agree = len(t.votes) >= 2 and t.votes[-1][0] is not None and t.votes[-1][0] == t.votes[-2][0]
+        strong = pid is not None and score >= thr + self.STRONG_MARGIN
+        if pid is not None and (strong or agree):
+            person = self.store.get_person(pid)
+            if person:
+                was_unknown = t.state == "unknown"
+                t.state, t.pid, t.name, t.score, t.mismatch = "known", pid, person["name"], score, 0
+                with self._plock:
+                    self._p.seq += 1
+                self.store.touch_seen(pid)
+                log.info("recognised %s (score %.2f%s)", person["name"], score, ", was unknown" if was_unknown else "")
+                newly.append((pid, emb, score))
+                learn.append((pid, emb, score))
+            return
+        unknown_min_w = self.s.face_unknown_min_width_px * frame_scale
+        if (t.state == "new" and now - t.first_seen >= 2.0 and len(t.votes) >= 2
+                and all(v[0] is None for v in list(t.votes)[-2:]) and t.w >= unknown_min_w):
+            t.state = "unknown"
+            t.embs.clear()  # a re-check must start from fresh evidence, not the blurry first impression
+            log.info("unknown person (best score %.2f, face %dpx wide)", score, int(t.w))
+
+    def _summarise(self, p: Presence, now: float) -> None:
+        """Fill the public snapshot from the live tracks (call with the lock held)."""
+        live = [t for t in self._tracks if now - t.last_seen <= self.TRACK_TTL]
+        people, seen = [], set()
+        for t in sorted((t for t in live if t.state == "known"), key=lambda t: t.w * t.h, reverse=True):
+            if t.pid in seen:
+                continue
+            seen.add(t.pid)
+            people.append({"id": t.pid, "name": t.name})
+        strangers = [t for t in live if t.state == "unknown"]
+        p.people, p.unknown = people, len(strangers)
+        p.unknown_since = min((t.first_seen for t in strangers), default=0.0)
+        if people:
+            top = next(t for t in live if t.state == "known" and t.pid == people[0]["id"])
+            p.status, p.person_id, p.name, p.score = "known", top.pid, top.name, top.score
+        elif strangers:
+            p.status, p.person_id, p.name = "unknown", None, None
+        else:
+            p.person_id, p.name = None, None
+            p.status = "checking" if (p.face_present or p.status != "none") else "none"
+
+    # -- templates --------------------------------------------------------------
     def _learn_template(self, pid: int, emb: np.ndarray, score: float, now: float) -> None:
         """Learn new looks (angle, light, glasses): store a template when the match is real but not strong,
         at most one every 5 minutes and never beyond FACES_PER_PERSON."""
@@ -241,7 +329,7 @@ class PresenceWatcher(threading.Thread):
         """Annotated preview for the admin panel: a box and a name on every face."""
         try:
             img = frame.copy()
-            for r in rows[: self.MAX_FACES]:
+            for r in rows[: self.s.face_max_people]:
                 x, y, w, h = (int(v) for v in r[:4])
                 cx, cy = x + w / 2, y + h / 2
                 near = min(self._labels, key=lambda t: (t[0] - cx) ** 2 + (t[1] - cy) ** 2, default=None)

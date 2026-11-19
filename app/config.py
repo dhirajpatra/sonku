@@ -124,6 +124,10 @@ class Settings:
     presence_interval_sec: float
     absence_sec: float
     face_min_width_px: int
+    face_unknown_min_width_px: int
+    face_max_people: int
+    face_detect_max_side: int
+    enroll_templates: int
     face_match_threshold: float
     face_refresh_days: int
     face_max_age_days: int
@@ -215,7 +219,11 @@ class Settings:
             vision_max_side=_i("VISION_MAX_SIDE", 1024),
             presence_interval_sec=_f("PRESENCE_INTERVAL_SEC", 0.7),
             absence_sec=_f("ABSENCE_SEC", 8.0),
-            face_min_width_px=_i("FACE_MIN_WIDTH_PX", 70),
+            face_min_width_px=_i("FACE_MIN_WIDTH_PX", 48),
+            face_unknown_min_width_px=_i("FACE_UNKNOWN_MIN_WIDTH_PX", 70),
+            face_max_people=_i("FACE_MAX_PEOPLE", 6),
+            face_detect_max_side=_i("FACE_DETECT_MAX_SIDE", 640),
+            enroll_templates=_i("ENROLL_TEMPLATES", 5),
             face_match_threshold=_f("FACE_MATCH_THRESHOLD", 0.363),
             face_refresh_days=_i("FACE_REFRESH_DAYS", 30),
             face_max_age_days=_i("FACE_MAX_AGE_DAYS", 90),
