@@ -128,6 +128,8 @@ For people far from the camera use `CAMERA_WIDTH=1280`, `CAMERA_HEIGHT=720`: fac
   whenever the database changes. The dashboard shows who is hot and the hit/miss counts.
 
 ## Troubleshooting
+First run `~/robot_env/bin/python scripts/check_install.py`: it checks the code version, `.env`, libraries, face models, the service and Ollama, and prints PASS / WARN / FAIL per line.
+
 | Symptom | Check |
 |---|---|
 | "camera unavailable" | `diagnose.py camera`; the old service may still hold the camera: `sudo systemctl status tabletop-robot` |
